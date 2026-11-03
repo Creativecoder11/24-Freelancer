@@ -8,8 +8,14 @@
     "db:generate": "prisma generate",
     "migrate:deploy": "prisma migrate deploy",
     "seed:base": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/seed-base.sql",
-    "seed:demo": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-fixture.sql"
+    "seed:demo": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-fixture.sql",
+    "seed:demo-jobs": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-jobs.sql",
+    "seed:demo-content": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-content.sql"
   },
-  "dependencies": { "@prisma/client": "^6.16.0" },
-  "devDependencies": { "prisma": "^6.16.0" }
+  "dependencies": {
+    "@prisma/client": "^6.16.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.0"
+  }
 }

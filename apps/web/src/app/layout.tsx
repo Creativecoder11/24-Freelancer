@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { bricolage, caveat, inter } from '@/lib/fonts';
+import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,8 +11,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${bricolage.variable} ${inter.variable} ${caveat.variable}`}>
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning className={`${bricolage.variable} ${inter.variable} ${caveat.variable}`}>
+      <head>
+        {/* Enable hide-before-animate only when JS runs and motion is allowed (GSAP takes over). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('motion')",
+          }}
+        />
+      </head>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

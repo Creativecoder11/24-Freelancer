@@ -6,3 +6,20 @@
 
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 :focus-visible { outline: none; box-shadow: var(--fl-shadow-focus); }
+
+/* ---- Motion bootstrapping (GSAP). Elements start hidden only when JS + motion are available. ---- */
+.motion [data-reveal],
+.motion [data-reveal-item],
+.motion [data-hero] { opacity: 0; }
+/* Safety net: if GSAP never initialises, reveal after 2.5 s. */
+.motion:not(.motion-ready) [data-reveal],
+.motion:not(.motion-ready) [data-reveal-item],
+.motion:not(.motion-ready) [data-hero] { animation: fl-reveal-fallback 0.3s 2.5s forwards; }
+@keyframes fl-reveal-fallback { to { opacity: 1; } }
+
+.marker-highlight { position: relative; display: inline-block; isolation: isolate; }
+.marker-highlight::before {
+  content: ''; position: absolute; z-index: -1; left: -2%; right: -2%; bottom: 6%; height: 46%;
+  background: var(--fl-bg-highlight-soft); border-radius: 6px; transform-origin: left center;
+  transform: scaleX(var(--marker-scale, 1)); transform: rotate(-1deg) scaleX(var(--marker-scale, 1));
+}

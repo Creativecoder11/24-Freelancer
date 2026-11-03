@@ -10,7 +10,10 @@ export interface PaginationProps {
   total: number;
   perPage: number;
   itemLabel?: string;
-  hrefFor: (p: number) => string;
+  /** Client callers: build the URL for a page. */
+  hrefFor?: (p: number) => string;
+  /** Server callers (functions can't cross the RSC boundary): URL with `__PAGE__` placeholder. */
+  hrefPattern?: string;
   /** Hide the "Showing x–y of z" text. */
   hideSummary?: boolean;
   className?: string;
@@ -35,7 +38,8 @@ const pagerBtn =
   'inline-flex h-9 items-center justify-center rounded-[8px] text-label-md transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-focus';
 
 /** Pagination (Doc 02 §5.21): Previous/Next 100×36, items 36×36, current brand-subtle. */
-export function Pagination({ page, totalPages, total, perPage, itemLabel, hrefFor, hideSummary, className }: PaginationProps) {
+export function Pagination({ page, totalPages, total, perPage, itemLabel, hrefFor: hrefForProp, hrefPattern, hideSummary, className }: PaginationProps) {
+  const hrefFor = hrefForProp ?? ((p: number) => (hrefPattern ?? '?page=__PAGE__').replace('__PAGE__', String(p)));
   const from = total === 0 ? 0 : (page - 1) * perPage + 1;
   const to = Math.min(total, page * perPage);
   const summary = `Showing ${from}–${to} of ${total}${itemLabel ? ` ${itemLabel}` : ''}`;
@@ -63,8 +67,8 @@ export function Pagination({ page, totalPages, total, perPage, itemLabel, hrefFo
     <div className={cn('flex flex-wrap items-center justify-between gap-4', className)}>
       {!hideSummary ? <p className="text-body-sm text-fg-tertiary">{summary}</p> : <span />}
       {totalPages > 1 ? (
-        <nav aria-label="Pagination">
-          <ul className="flex items-center gap-2">
+        <nav aria-label="Pagination" className="max-w-full">
+          <ul className="flex flex-wrap items-center justify-center gap-1 tablet:gap-2">
             <li>{edge('prev')}</li>
             {pageItems(page, totalPages).map((p, i) =>
               p === 'gap' ? (

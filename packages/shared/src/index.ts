@@ -14,6 +14,8 @@ export * from './schemas/auth';
 export * from './schemas/me';
 export * from './schemas/kyc-uploads';
 export * from './schemas/public';
+export * from './schemas/worker';
+export * from './worker-types';
 
 /** Cookie names (Doc 11, Canonical §16.5). */
 export const COOKIE_NAMES = {

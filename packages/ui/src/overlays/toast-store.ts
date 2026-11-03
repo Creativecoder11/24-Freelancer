@@ -18,6 +18,7 @@ export interface ToastItem extends ToastInput {
 
 const MAX = 3;
 const DEDUPE_MS = 2000;
+const EMPTY: ToastItem[] = [];
 let items: ToastItem[] = [];
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -29,7 +30,7 @@ export const toastStore = {
     return () => listeners.delete(cb);
   },
   get: () => items,
-  getServer: (): ToastItem[] => [],
+  getServer: (): ToastItem[] => EMPTY,
   push(input: ToastInput): string {
     const now = Date.now();
     const dup = items.find((t) => !t.leaving && t.title === input.title && t.body === input.body && now - t.createdAt < DEDUPE_MS);
