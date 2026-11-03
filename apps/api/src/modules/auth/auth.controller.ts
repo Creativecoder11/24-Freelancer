@@ -39,9 +39,10 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(201)
-  register(@Body(new ZodPipe(registerSchema)) body: RegisterBody, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async register(@Body(new ZodPipe(registerSchema)) body: RegisterBody, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ctx = this.sessions.context(req, res);
-    return this.auth.register(body, req.cookies?.[COOKIE_NAMES.referral], ctx);
+    const r = await this.auth.register(body, req.cookies?.[COOKIE_NAMES.referral], ctx);
+    return r.signedIn ? this.finish(res, r.signedIn) : r.otp;
   }
 
   @Post('login')

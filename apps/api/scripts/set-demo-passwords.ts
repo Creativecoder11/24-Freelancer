@@ -32,7 +32,7 @@ async function main() {
     timeCost: Number(env.ARGON2_TIME_COST ?? 2),
     parallelism: Number(env.ARGON2_PARALLELISM ?? 1),
   });
-  const users = await prisma.user.findMany({ where: { status: { not: 'closed' } }, select: { id: true, email: true, phoneE164: true, publicId: true } });
+  const users = await prisma.user.findMany({ where: { status: { not: 'closed' }, OR: [{ email: { endsWith: '@example.com' } }, { email: { endsWith: '.example' } }] }, select: { id: true, email: true, phoneE164: true, publicId: true } });
   const now = new Date();
   for (const u of users) {
     await prisma.user.update({ where: { id: u.id }, data: { passwordHash: hash, passwordChangedAt: now, failedLoginCount: 0, lockedUntil: null } });

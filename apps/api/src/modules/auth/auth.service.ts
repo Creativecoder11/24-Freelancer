@@ -101,7 +101,7 @@ export class AuthService {
 
   // ----- register -----
 
-  async register(dto: RegisterBody, cookieRef: string | undefined, ctx: RequestContext): Promise<OtpChallengeResponse> {
+  async register(dto: RegisterBody, cookieRef: string | undefined, ctx: RequestContext): Promise<{ otp?: OtpChallengeResponse; signedIn?: SignedIn }> {
     if (!getEnv().FEATURE_SIGNUPS) throw new ApiError('FEATURE_DISABLED');
     const id = this.normalise(dto.identifier);
     await this.rateLimit('register', ctx, id.value);
@@ -168,8 +168,17 @@ export class AuthService {
     }
     if (!user) throw new ApiError('INTERNAL_ERROR');
 
+    if (!getEnv().AUTH_OTP_ENABLED) {
+      // OTP switched off: treat the contact as verified and sign in straight away.
+      const verified = await this.prisma.db.user.update({
+        where: { id: user.id },
+        data: id.kind === 'email' ? { emailVerifiedAt: new Date() } : { phoneVerifiedAt: new Date() },
+      });
+      await this.sessions.recordDevice(verified.id, ctx, false);
+      return { signedIn: await this.signIn(verified, true, ctx) };
+    }
     const challenge = await this.otp.issue({ userId: user.id, purpose: 'signup', destination: id.value, ip: ctx.ip, meta: { keep_signed_in: true } });
-    return OtpService.toResponse(challenge);
+    return { otp: OtpService.toResponse(challenge) };
   }
 
   // ----- password login -----
@@ -210,15 +219,16 @@ export class AuthService {
       await this.prisma.db.user.update({ where: { id: user.id }, data: { passwordHash: h } });
     }
 
+    const otpOn = getEnv().AUTH_OTP_ENABLED;
     // Unverified contact: send the sign-up code again (FR-AUTH-002).
-    if (!user.emailVerifiedAt && !user.phoneVerifiedAt) {
+    if (otpOn && !user.emailVerifiedAt && !user.phoneVerifiedAt) {
       const c = await this.otp.issue({ userId: user.id, purpose: 'signup', destination: id.value, ip: ctx.ip, meta: { keep_signed_in: dto.keep_signed_in } });
       await this.prisma.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0 } });
       return { otp: { result: 'otp_required', ...OtpService.toResponse(c) } };
     }
 
     // Two-step on a new device (Doc 04 §3.9): no session until the code is verified.
-    if (user.twoStepEnabled && !(await this.sessions.isTrusted(user.id, ctx.deviceId))) {
+    if (otpOn && user.twoStepEnabled && !(await this.sessions.isTrusted(user.id, ctx.deviceId))) {
       const destination = user.phoneVerifiedAt && user.phoneE164 ? user.phoneE164 : user.email!;
       const c = await this.otp.issue({ userId: user.id, purpose: 'new_device', destination, ip: ctx.ip, meta: { keep_signed_in: dto.keep_signed_in } });
       await this.prisma.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0 } });

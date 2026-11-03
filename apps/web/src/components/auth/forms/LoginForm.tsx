@@ -15,6 +15,9 @@ import { safeNext } from '@/lib/next-param';
 import { useCountdown } from '@/lib/use-countdown';
 import { AuthHeading } from '../AuthShell';
 
+/** One-time-code sign-in is hidden while OTP is switched off (NEXT_PUBLIC_AUTH_OTP_ENABLED=false). */
+const OTP_ENABLED = process.env.NEXT_PUBLIC_AUTH_OTP_ENABLED !== 'false';
+
 const COPY = {
   invalid: 'That email, phone or password doesn’t match. Try again or reset your password.',
   suspended: 'This account is suspended. Contact support to appeal.',
@@ -50,6 +53,7 @@ export function LoginForm() {
     <GuestOnlyGate>
       <AuthHeading title="Welcome back" sub="Sign in to pick up where you left off." />
       <div className="mt-5 flex flex-col gap-6 tablet:mt-6">
+        {OTP_ENABLED ? (
         <SegmentedControl<Method>
           label="Sign-in method"
           kind="tabs"
@@ -61,6 +65,7 @@ export function LoginForm() {
             { value: 'otp', label: 'One-time code', controls: 'signin-panel' },
           ]}
         />
+        ) : null}
         {reason ? (
           <Alert tone={reason === 'session_expired' ? 'info' : 'danger'}>
             {reason === 'suspended' ? COPY.suspended : reason === 'closed' ? COPY.closed : COPY.sessionExpired}

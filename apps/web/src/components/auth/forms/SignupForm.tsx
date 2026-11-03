@@ -12,6 +12,7 @@ import {
   fullName,
   identifier,
   password,
+  type AuthenticatedResponse,
   type OtpChallengeResponse,
   type PublicConfig,
 } from '@24f/shared';
@@ -19,7 +20,7 @@ import { Alert, Button, Checkbox, Field, PasswordField, Select, SelectableCard }
 import { api } from '@/lib/api/client';
 import { applyServerError } from '@/lib/form-errors';
 import { storeChallenge, takePrefill } from '@/lib/auth/challenge';
-import { GuestOnlyGate } from '@/lib/auth/session';
+import { GuestOnlyGate, useSignedIn } from '@/lib/auth/session';
 import { safeNext } from '@/lib/next-param';
 import { AuthHeading } from '../AuthShell';
 
@@ -49,6 +50,7 @@ function readCookie(name: string) {
 /** SCR-AUTH-02 Create account (Figma 26:552). */
 export function SignupForm() {
   const router = useRouter();
+  const signedIn = useSignedIn();
   const params = useSearchParams();
   const next = safeNext(params.get('next'));
   const roleParam = params.get('role') === 'employer' ? 'employer' : 'worker';
@@ -93,8 +95,13 @@ export function SignupForm() {
     setTaken(false);
     try {
       const body = { ...v, referral_code: v.referral_code ? v.referral_code.trim().toUpperCase() : null, terms_accepted: true };
-      const res = await api.post<OtpChallengeResponse>('/auth/register', body, { auth: false });
-      storeChallenge(res, { next, identifier: v.identifier, back: '/signup', keep_signed_in: true });
+      const res = await api.post<OtpChallengeResponse | AuthenticatedResponse>('/auth/register', body, { auth: false });
+      // OTP switched off on the server (AUTH_OTP_ENABLED=false): signed in straight away.
+      if ('result' in res && res.result === 'authenticated') {
+        signedIn(res, next);
+        return;
+      }
+      storeChallenge(res as OtpChallengeResponse, { next, identifier: v.identifier, back: '/signup', keep_signed_in: true });
       router.push(`/verify?purpose=signup${next ? `&next=${encodeURIComponent(next)}` : ''}`);
     } catch (err) {
       applyServerError(err, form, {

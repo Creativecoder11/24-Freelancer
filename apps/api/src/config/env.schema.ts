@@ -126,6 +126,8 @@ export const envSchema = z
 
     // ----- OTP delivery -----
     OTP_DELIVERY_DRIVER: z.enum(['log', 'email']).default('log'),
+    /** false = skip all OTP steps (sign-up verification, 2-step on new device). Re-enable before launch. */
+    AUTH_OTP_ENABLED: bool(true),
     EMAIL_PROVIDER: z.enum(['log', 'smtp', 'ses', 'postmark']).default('log'),
     EMAIL_FROM: str('24 Freelancing <no-reply@24freelancing.local>'),
     SMS_PROVIDER: z.enum(['log', 'sslwireless', 'alphasms', 'bulksmsbd']).default('log'),
