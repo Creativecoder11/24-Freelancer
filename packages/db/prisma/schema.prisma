@@ -1,0 +1,1966 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AccountRestriction {
+  id               String          @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId           String          @db.Uuid @map("user_id")
+  kind             RestrictionKind
+  reasonCode       String          @db.VarChar(40) @map("reason_code")
+  internalNote     String?         @db.VarChar(1000) @map("internal_note")
+  publicMessage    String          @db.VarChar(300) @map("public_message")
+  startsAt         DateTime        @default(now()) @db.Timestamptz(6) @map("starts_at")
+  endsAt           DateTime?       @db.Timestamptz(6) @map("ends_at")
+  createdByAdminId String          @db.Uuid @map("created_by_admin_id")
+  liftedAt         DateTime?       @db.Timestamptz(6) @map("lifted_at")
+  liftedByAdminId  String?         @db.Uuid @map("lifted_by_admin_id")
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime        @default(now()) @db.Timestamptz(6) @map("updated_at")
+  createdByAdmin   AdminUser       @relation("account_restrictions_created_by_admin_idToadmin_users", fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  liftedByAdmin    AdminUser?      @relation("account_restrictions_lifted_by_admin_idToadmin_users", fields: [liftedByAdminId], references: [id], onUpdate: NoAction)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  appeals          Appeal[]
+
+  @@map("account_restrictions")
+}
+
+model AdminPendingAction {
+  id               String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  action           String    @db.VarChar(60)
+  objectType       String    @db.VarChar(40) @map("object_type")
+  objectId         String    @db.Uuid @map("object_id")
+  payload          Json      @default("{}")
+  reason           String    @db.VarChar(500)
+  idempotencyKey   String    @db.VarChar(100) @map("idempotency_key")
+  status           String    @default("pending") @db.VarChar(20)
+  createdByAdminId String    @db.Uuid @map("created_by_admin_id")
+  decidedByAdminId String?   @db.Uuid @map("decided_by_admin_id")
+  decidedAt        DateTime? @db.Timestamptz(6) @map("decided_at")
+  decisionNote     String?   @db.VarChar(500) @map("decision_note")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  createdByAdmin   AdminUser  @relation("admin_pending_actions_created_by_admin_idToadmin_users", fields: [createdByAdminId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  decidedByAdmin   AdminUser? @relation("admin_pending_actions_decided_by_admin_idToadmin_users", fields: [decidedByAdminId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@map("admin_pending_actions")
+}
+
+model AdminRole {
+  id             String          @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  code           String          @unique @db.VarChar(30)
+  name           String          @db.VarChar(60)
+  description    String          @db.VarChar(300)
+  permissions    String[]        @default([])
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime        @default(now()) @db.Timestamptz(6) @map("updated_at")
+  adminUserRoles AdminUserRole[]
+
+  @@map("admin_roles")
+}
+
+model AdminSession {
+  id               String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  adminUserId      String    @db.Uuid @map("admin_user_id")
+  refreshTokenHash Bytes     @unique @map("refresh_token_hash")
+  familyId         String    @db.Uuid @map("family_id")
+  ipAddress        String?   @db.Inet @map("ip_address")
+  userAgent        String?   @db.VarChar(512) @map("user_agent")
+  lastActiveAt     DateTime  @default(now()) @db.Timestamptz(6) @map("last_active_at")
+  reauthAt         DateTime? @db.Timestamptz(6) @map("reauth_at")
+  expiresAt        DateTime  @db.Timestamptz(6) @map("expires_at")
+  revokedAt        DateTime? @db.Timestamptz(6) @map("revoked_at")
+  revokedReason    String?   @db.VarChar(40) @map("revoked_reason")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  adminUser        AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([familyId], map: "admin_sessions_family_idx")
+  @@map("admin_sessions")
+}
+
+model AdminUserRole {
+  adminUserId      String     @db.Uuid @map("admin_user_id")
+  adminRoleId      String     @db.Uuid @map("admin_role_id")
+  grantedByAdminId String?    @db.Uuid @map("granted_by_admin_id")
+  grantedAt        DateTime   @default(now()) @db.Timestamptz(6) @map("granted_at")
+  adminRole        AdminRole  @relation(fields: [adminRoleId], references: [id], onUpdate: NoAction)
+  adminUser        AdminUser  @relation("admin_user_roles_admin_user_idToadmin_users", fields: [adminUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  grantedByAdmin   AdminUser? @relation("admin_user_roles_granted_by_admin_idToadmin_users", fields: [grantedByAdminId], references: [id], onUpdate: NoAction)
+
+  @@id([adminUserId, adminRoleId])
+  @@index([adminRoleId], map: "admin_user_roles_role_idx")
+  @@map("admin_user_roles")
+}
+
+model AdminUser {
+  id                                       String                    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  email                                    String                    @unique @db.Citext
+  fullName                                 String                    @db.VarChar(80) @map("full_name")
+  passwordHash                             String                    @db.VarChar(255) @map("password_hash")
+  totpSecretEnc                            Bytes?                    @map("totp_secret_enc")
+  totpEnrolledAt                           DateTime?                 @db.Timestamptz(6) @map("totp_enrolled_at")
+  mustChangePassword                       Boolean                   @default(false) @map("must_change_password")
+  status                                   AdminUserStatus           @default(active)
+  lastLoginAt                              DateTime?                 @db.Timestamptz(6) @map("last_login_at")
+  failedLoginCount                         Int                       @default(0) @db.SmallInt @map("failed_login_count")
+  lockedUntil                              DateTime?                 @db.Timestamptz(6) @map("locked_until")
+  createdByAdminId                         String?                   @db.Uuid @map("created_by_admin_id")
+  createdAt                                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                                DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  accountRestrictionsByCreatedByAdmin      AccountRestriction[]      @relation("account_restrictions_created_by_admin_idToadmin_users")
+  accountRestrictionsByLiftedByAdmin       AccountRestriction[]      @relation("account_restrictions_lifted_by_admin_idToadmin_users")
+  adminUserRolesByAdminUser                AdminUserRole[]           @relation("admin_user_roles_admin_user_idToadmin_users")
+  adminUserRolesByGrantedByAdmin           AdminUserRole[]           @relation("admin_user_roles_granted_by_admin_idToadmin_users")
+  createdByAdmin                           AdminUser?                @relation("admin_usersToadmin_users", fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  adminUsersByCreatedByAdmin               AdminUser[]               @relation("admin_usersToadmin_users")
+  appeals                                  Appeal[]
+  auditLogs                                AuditLog[]
+  contactMessages                          ContactMessage[]
+  disputesByAssignedAdmin                  Dispute[]                 @relation("disputes_assigned_admin_idToadmin_users")
+  disputesByResolvedByAdmin                Dispute[]                 @relation("disputes_resolved_by_admin_idToadmin_users")
+  exchangeRates                            ExchangeRate[]
+  faqs                                     Faq[]
+  helpArticles                             HelpArticle[]
+  jobReports                               JobReport[]
+  jobs                                     Job[]
+  kycVerifications                         KycVerification[]
+  ledgerAdjustmentRequestsByCreatedByAdmin LedgerAdjustmentRequest[] @relation("ledger_adjustment_requests_created_by_admin_idToadmin_users")
+  ledgerAdjustmentRequestsByDecidedByAdmin LedgerAdjustmentRequest[] @relation("ledger_adjustment_requests_decided_by_admin_idToadmin_users")
+  ledgerTransactionsByApprovedByAdmin      LedgerTransaction[]       @relation("ledger_transactions_approved_by_admin_idToadmin_users")
+  ledgerTransactionsByCreatedByAdmin       LedgerTransaction[]       @relation("ledger_transactions_created_by_admin_idToadmin_users")
+  legalPages                               LegalPage[]
+  payoutMethodConfigs                      PayoutMethodConfig[]
+  platformSettings                         PlatformSetting[]
+  reconciliationItems                      ReconciliationItem[]
+  submissionEvents                         SubmissionEvent[]
+  submissions                              Submission[]
+  uploads                                  Upload[]
+  withdrawalBatches                        WithdrawalBatche[]
+  withdrawalEvents                         WithdrawalEvent[]
+  withdrawals                              Withdrawal[]
+
+  adminSessions                            AdminSession[]
+  adminPendingActionsByCreatedByAdmin      AdminPendingAction[]      @relation("admin_pending_actions_created_by_admin_idToadmin_users")
+  adminPendingActionsByDecidedByAdmin      AdminPendingAction[]      @relation("admin_pending_actions_decided_by_admin_idToadmin_users")
+  supportReplies                           SupportReply[]
+  @@map("admin_users")
+}
+
+model Appeal {
+  id               String             @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId           String             @db.Uuid @map("user_id")
+  restrictionId    String             @db.Uuid @map("restriction_id")
+  message          String             @db.VarChar(1000)
+  evidenceUploadId String?            @db.Uuid @map("evidence_upload_id")
+  status           AppealStatus       @default(open)
+  decidedByAdminId String?            @db.Uuid @map("decided_by_admin_id")
+  decisionNote     String?            @db.VarChar(500) @map("decision_note")
+  decidedAt        DateTime?          @db.Timestamptz(6) @map("decided_at")
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime           @default(now()) @db.Timestamptz(6) @map("updated_at")
+  decidedByAdmin   AdminUser?         @relation(fields: [decidedByAdminId], references: [id], onUpdate: NoAction)
+  evidenceUpload   Upload?            @relation(fields: [evidenceUploadId], references: [id], onUpdate: NoAction)
+  restriction      AccountRestriction @relation(fields: [restrictionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("appeals")
+}
+
+model AuditLog {
+  id           String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  actorType    ActorType  @map("actor_type")
+  actorAdminId String?    @db.Uuid @map("actor_admin_id")
+  actorUserId  String?    @db.Uuid @map("actor_user_id")
+  action       String     @db.VarChar(80)
+  entityType   String     @db.VarChar(40) @map("entity_type")
+  entityId     String?    @db.Uuid @map("entity_id")
+  entityRef    String?    @db.VarChar(20) @map("entity_ref")
+  reason       String?    @db.VarChar(500)
+  beforeData   Json?      @map("before_data")
+  afterData    Json?      @map("after_data")
+  ipAddress    String?    @db.Inet @map("ip_address")
+  userAgent    String?    @db.VarChar(512) @map("user_agent")
+  requestId    String?    @db.VarChar(64) @map("request_id")
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  actorAdmin   AdminUser? @relation(fields: [actorAdminId], references: [id], onUpdate: NoAction)
+  actorUser    User?      @relation(fields: [actorUserId], references: [id], onUpdate: NoAction)
+
+  @@index([actorAdminId, createdAt(sort: Desc)], map: "audit_admin_idx")
+  @@index([createdAt], map: "audit_created_idx")
+  @@index([entityType, entityId, createdAt(sort: Desc)], map: "audit_entity_idx")
+  @@map("audit_logs")
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId           String    @db.Uuid @map("user_id")
+  refreshTokenHash Bytes     @unique @map("refresh_token_hash")
+  familyId         String    @db.Uuid @map("family_id")
+  keepSignedIn     Boolean   @default(false) @map("keep_signed_in")
+  deviceLabel      String?   @db.VarChar(120) @map("device_label")
+  userAgent        String?   @db.VarChar(512) @map("user_agent")
+  ipAddress        String?   @db.Inet @map("ip_address")
+  city             String?   @db.VarChar(80)
+  lastActiveAt     DateTime  @default(now()) @db.Timestamptz(6) @map("last_active_at")
+  expiresAt        DateTime  @db.Timestamptz(6) @map("expires_at")
+  revokedAt        DateTime? @db.Timestamptz(6) @map("revoked_at")
+  revokedReason    String?   @db.VarChar(40) @map("revoked_reason")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "auth_sessions_expires_idx")
+  @@index([familyId], map: "auth_sessions_family_idx")
+  @@map("auth_sessions")
+}
+
+model Category {
+  id            String         @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  slug          String         @unique @db.VarChar(40)
+  name          String         @db.VarChar(60)
+  sortOrder     Int            @default(0) @db.SmallInt @map("sort_order")
+  isPublic      Boolean        @default(true) @map("is_public")
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime       @default(now()) @db.Timestamptz(6) @map("updated_at")
+  jobs          Job[]
+  userInterests UserInterest[]
+
+  @@map("categories")
+}
+
+model ContactMessage {
+  id              String               @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId          String?              @db.Uuid @map("user_id")
+  fullName        String               @db.VarChar(80) @map("full_name")
+  email           String               @db.Citext
+  topic           ContactTopic
+  accountPublicId String?              @db.VarChar(9) @map("account_public_id")
+  message         String               @db.VarChar(300)
+  consentAt       DateTime             @db.Timestamptz(6) @map("consent_at")
+  status          ContactMessageStatus @default(new)
+  assignedAdminId String?              @db.Uuid @map("assigned_admin_id")
+  answeredAt      DateTime?            @db.Timestamptz(6) @map("answered_at")
+  ipAddress       String?              @db.Inet @map("ip_address")
+  userAgent       String?              @db.VarChar(512) @map("user_agent")
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime             @default(now()) @db.Timestamptz(6) @map("updated_at")
+  assignedAdmin   AdminUser?           @relation(fields: [assignedAdminId], references: [id], onUpdate: NoAction)
+  user            User?                @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  replies           SupportReply[]
+  @@index([email], map: "contact_email_idx")
+  @@map("contact_messages")
+}
+
+model Deposit {
+  id                          String                   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicRef                   String                   @unique @default(dbgenerated("fmt_ref('DP-'::text, nextval('deposit_ref_seq'::regclass), 5)")) @db.VarChar(12) @map("public_ref")
+  employerUserId              String                   @db.Uuid @map("employer_user_id")
+  method                      DepositMethod
+  provider                    String                   @db.VarChar(40)
+  providerPaymentId           String?                  @db.VarChar(120) @map("provider_payment_id")
+  providerAsset               String?                  @db.VarChar(20) @map("provider_asset")
+  amountUsd                   Decimal                  @db.Decimal(20, 6) @map("amount_usd")
+  amountReceivedUsd           Decimal?                 @db.Decimal(20, 6) @map("amount_received_usd")
+  creditedAmountUsd           Decimal?                 @db.Decimal(20, 6) @map("credited_amount_usd")
+  providerFee                 Decimal?                 @db.Decimal(20, 6) @map("provider_fee")
+  fxRate                      Decimal?                 @db.Decimal(20, 6) @map("fx_rate")
+  chargeAmountBdt             Decimal?                 @db.Decimal(20, 2) @map("charge_amount_bdt")
+  payCurrency                 String?                  @db.VarChar(10) @map("pay_currency")
+  payAmount                   Decimal?                 @db.Decimal(30, 10) @map("pay_amount")
+  network                     String?                  @db.VarChar(20)
+  txHash                      String?                  @db.VarChar(120) @map("tx_hash")
+  confirmations               Int?
+  needsReview                 Boolean                  @default(false) @map("needs_review")
+  status                      DepositStatus            @default(initiated)
+  checkoutUrl                 String?                  @db.VarChar(2048) @map("checkout_url")
+  expiresAt                   DateTime?                @db.Timestamptz(6) @map("expires_at")
+  initiatedAt                 DateTime                 @default(now()) @db.Timestamptz(6) @map("initiated_at")
+  completedAt                 DateTime?                @db.Timestamptz(6) @map("completed_at")
+  failedAt                    DateTime?                @db.Timestamptz(6) @map("failed_at")
+  failureReason               String?                  @db.VarChar(300) @map("failure_reason")
+  creditLedgerTxId            String?                  @db.Uuid @map("credit_ledger_tx_id")
+  settledAt                   DateTime?                @db.Timestamptz(6) @map("settled_at")
+  settlementId                String?                  @db.Uuid @map("settlement_id")
+  refundedAmountUsd           Decimal                  @default(0) @db.Decimal(20, 6) @map("refunded_amount_usd")
+  refundedAt                  DateTime?                @db.Timestamptz(6) @map("refunded_at")
+  refundLedgerTxId            String?                  @db.Uuid @map("refund_ledger_tx_id")
+  createdAt                   DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                   DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  creditLedgerTx              LedgerTransaction?       @relation("deposits_credit_ledger_tx_idToledger_transactions", fields: [creditLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  employerUser                User                     @relation(fields: [employerUserId], references: [id], onUpdate: NoAction)
+  refundLedgerTx              LedgerTransaction?       @relation("deposits_refund_ledger_tx_idToledger_transactions", fields: [refundLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  ledgerTransactionsByDeposit LedgerTransaction[]      @relation("ledger_transactions_deposit_idTodeposits")
+  paymentWebhookEvents        PaymentWebhookEvent[]
+  providerSettlementLines     ProviderSettlementLine[]
+  referralCommissions         ReferralCommission[]
+
+  @@index([employerUserId, initiatedAt(sort: Desc)], map: "dep_employer_idx")
+  @@map("deposits")
+}
+
+model Dispute {
+  id                          String              @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicRef                   String              @unique @default(dbgenerated("fmt_ref('DS-'::text, nextval('dispute_ref_seq'::regclass), 5)")) @db.VarChar(12) @map("public_ref")
+  submissionId                String              @unique @db.Uuid @map("submission_id")
+  workerUserId                String              @db.Uuid @map("worker_user_id")
+  employerUserId              String              @db.Uuid @map("employer_user_id")
+  status                      DisputeStatus       @default(open)
+  disputedDecision            SubmissionStatus    @map("disputed_decision")
+  workerStatement             String              @db.VarChar(1000) @map("worker_statement")
+  evidenceUploadId            String?             @db.Uuid @map("evidence_upload_id")
+  evidenceUpload2Id           String?             @db.Uuid @map("evidence_upload_2_id")
+  evidenceUpload3Id           String?             @db.Uuid @map("evidence_upload_3_id")
+  openedAt                    DateTime            @default(now()) @db.Timestamptz(6) @map("opened_at")
+  slaDueAt                    DateTime            @db.Timestamptz(6) @map("sla_due_at")
+  assignedAdminId             String?             @db.Uuid @map("assigned_admin_id")
+  underReviewAt               DateTime?           @db.Timestamptz(6) @map("under_review_at")
+  resolvedAt                  DateTime?           @db.Timestamptz(6) @map("resolved_at")
+  resolvedByAdminId           String?             @db.Uuid @map("resolved_by_admin_id")
+  resolutionNote              String?             @db.VarChar(1000) @map("resolution_note")
+  withdrawnAt                 DateTime?           @db.Timestamptz(6) @map("withdrawn_at")
+  payoutLedgerTxId            String?             @db.Uuid @map("payout_ledger_tx_id")
+  createdAt                   DateTime            @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                   DateTime            @default(now()) @db.Timestamptz(6) @map("updated_at")
+  payoutLedgerTx              LedgerTransaction?  @relation("disputes_payout_ledger_tx_idToledger_transactions", fields: [payoutLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "dispute_payout_tx_fk")
+  assignedAdmin               AdminUser?          @relation("disputes_assigned_admin_idToadmin_users", fields: [assignedAdminId], references: [id], onUpdate: NoAction)
+  employerUser                User                @relation("disputes_employer_user_idTousers", fields: [employerUserId], references: [id], onUpdate: NoAction)
+  evidenceUpload              Upload?             @relation("DisputeEvidence1", fields: [evidenceUploadId], references: [id], onUpdate: NoAction)
+  evidenceUpload2             Upload?             @relation("DisputeEvidence2", fields: [evidenceUpload2Id], references: [id], onUpdate: NoAction)
+  evidenceUpload3             Upload?             @relation("DisputeEvidence3", fields: [evidenceUpload3Id], references: [id], onUpdate: NoAction)
+  resolvedByAdmin             AdminUser?          @relation("disputes_resolved_by_admin_idToadmin_users", fields: [resolvedByAdminId], references: [id], onUpdate: NoAction)
+  submission                  Submission          @relation(fields: [submissionId], references: [id], onUpdate: NoAction)
+  workerUser                  User                @relation("disputes_worker_user_idTousers", fields: [workerUserId], references: [id], onUpdate: NoAction)
+  ledgerTransactionsByDispute LedgerTransaction[] @relation("ledger_transactions_dispute_idTodisputes")
+
+  @@index([workerUserId, openedAt(sort: Desc)], map: "disputes_worker_idx")
+  @@map("disputes")
+}
+
+model EmployerProfile {
+  userId                   String    @id @db.Uuid @map("user_id")
+  businessName             String    @db.VarChar(80) @map("business_name")
+  websiteUrl               String?   @db.VarChar(255) @map("website_url")
+  industry                 String?   @db.VarChar(60)
+  billingEmail             String?   @db.Citext @map("billing_email")
+  about                    String?   @db.VarChar(300)
+  logoUploadId             String?   @db.Uuid @map("logo_upload_id")
+  verificationStatus       EmployerVerificationStatus @default(not_submitted) @map("verification_status")
+  verificationSubmittedAt  DateTime? @db.Timestamptz(6) @map("verification_submitted_at")
+  employerVerifiedAt       DateTime? @db.Timestamptz(6) @map("employer_verified_at")
+  verificationNote         String?   @db.VarChar(500) @map("verification_note")
+  defaultReviewWindowHours Int       @default(72) @db.SmallInt @map("default_review_window_hours")
+  defaultMinApprovalRate   Int       @default(80) @db.SmallInt @map("default_min_approval_rate")
+  defaultAutoApprove       Boolean   @default(true) @map("default_auto_approve")
+  defaultAllowResubmission Boolean   @default(true) @map("default_allow_resubmission")
+  defaultPauseOnLowDeposit Boolean   @default(true) @map("default_pause_on_low_deposit")
+  approvalRatePct          Int?      @db.SmallInt @map("approval_rate_pct")
+  avgReviewSeconds         Int?      @map("avg_review_seconds")
+  jobsPostedCount          Int       @default(0) @map("jobs_posted_count")
+  statsRefreshedAt         DateTime? @db.Timestamptz(6) @map("stats_refreshed_at")
+  receivableUsd             Decimal                   @default(0) @db.Decimal(20, 6) @map("receivable_usd")
+  createdAt                DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  logoUpload               Upload?   @relation(fields: [logoUploadId], references: [id], onUpdate: NoAction)
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([businessName(ops: raw("gin_trgm_ops"))], map: "employer_profiles_name_trgm", type: Gin)
+  @@map("employer_profiles")
+}
+
+model ExchangeRate {
+  id               String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  baseCurrency     String            @default("USD") @db.Char(3) @map("base_currency")
+  quoteCurrency    String            @db.Char(4) @map("quote_currency")
+  direction        String            @default("payout") @db.VarChar(8)
+  rate             Decimal           @db.Decimal(20, 6)
+  source           String            @default("manual") @db.VarChar(20)
+  marginPercent    Decimal           @default(0) @db.Decimal(7, 4) @map("margin_percent")
+  effectiveFrom    DateTime          @default(now()) @db.Timestamptz(6) @map("effective_from")
+  createdByAdminId String?           @db.Uuid @map("created_by_admin_id")
+  note             String?           @db.VarChar(200)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  createdByAdmin   AdminUser?        @relation(fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  withdrawalQuotes WithdrawalQuote[]
+  withdrawals      Withdrawal[]
+
+  @@unique([quoteCurrency, direction, effectiveFrom], map: "fx_effective_uq")
+  @@index([quoteCurrency, direction, effectiveFrom(sort: Desc)], map: "fx_current_idx")
+  @@map("exchange_rates")
+}
+
+model Faq {
+  id               String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  question         String     @db.VarChar(200)
+  answerMd         String     @map("answer_md")
+  placements       String[]
+  sortOrder        Int        @default(0) @db.SmallInt @map("sort_order")
+  isPublished      Boolean    @default(false) @map("is_published")
+  updatedByAdminId String?    @db.Uuid @map("updated_by_admin_id")
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime   @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByAdmin   AdminUser? @relation(fields: [updatedByAdminId], references: [id], onUpdate: NoAction)
+
+  @@index([placements], map: "faqs_placement_gin", type: Gin)
+  @@map("faqs")
+}
+
+model HelpArticle {
+  id               String                   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  topicId          String                   @db.Uuid @map("topic_id")
+  slug             String                   @db.VarChar(120)
+  title            String                   @db.VarChar(160)
+  summary          String?                  @db.VarChar(300)
+  bodyMd           String                   @map("body_md")
+  isPopular        Boolean                  @default(false) @map("is_popular")
+  popularLabel     String?                  @db.VarChar(40) @map("popular_label")
+  sortOrder        Int                      @default(0) @db.SmallInt @map("sort_order")
+  publishedAt      DateTime?                @db.Timestamptz(6) @map("published_at")
+  updatedByAdminId String?                  @db.Uuid @map("updated_by_admin_id")
+  searchTsv        Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('english'::regconfig, (COALESCE(title, ''::character varying))::text), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, COALESCE(body_md, ''::text)), 'B'::\"char\"))")) @map("search_tsv")
+  createdAt        DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  topic            HelpTopic                @relation(fields: [topicId], references: [id], onUpdate: NoAction)
+  updatedByAdmin   AdminUser?               @relation(fields: [updatedByAdminId], references: [id], onUpdate: NoAction)
+
+  @@unique([topicId, slug], map: "help_article_slug_uq")
+  @@index([searchTsv], map: "help_articles_search_gin", type: Gin)
+  @@map("help_articles")
+}
+
+model HelpTopic {
+  id           String        @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  slug         String        @unique @db.VarChar(60)
+  title        String        @db.VarChar(60)
+  description  String        @db.VarChar(160)
+  contactTopic ContactTopic? @map("contact_topic")
+  sortOrder    Int           @default(0) @db.SmallInt @map("sort_order")
+  isPublished  Boolean       @default(true) @map("is_published")
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime      @default(now()) @db.Timestamptz(6) @map("updated_at")
+  helpArticles HelpArticle[]
+
+  @@map("help_topics")
+}
+
+model IdempotencyKey {
+  id           String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  actorType    ActorType         @map("actor_type")
+  actorId      String            @db.Uuid @map("actor_id")
+  key          String            @db.VarChar(80)
+  method       String            @db.VarChar(8)
+  path         String            @db.VarChar(300)
+  requestHash  Bytes             @map("request_hash")
+  status       IdempotencyStatus @default(in_progress)
+  responseCode Int?              @db.SmallInt @map("response_code")
+  responseBody Json?             @map("response_body")
+  lockedUntil  DateTime          @db.Timestamptz(6) @map("locked_until")
+  createdAt    DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  expiresAt    DateTime          @db.Timestamptz(6) @map("expires_at")
+
+  @@unique([actorType, actorId, key], map: "idem_key_uq")
+  @@index([expiresAt], map: "idem_expires_idx")
+  @@map("idempotency_keys")
+}
+
+model JobProofRequirement {
+  id                   String                @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobId                String                @db.Uuid @map("job_id")
+  position             Int                   @db.SmallInt
+  proofType            ProofType             @map("proof_type")
+  title                String                @db.VarChar(80)
+  fieldLabel           String?               @db.VarChar(60) @map("field_label")
+  helper               String?               @db.VarChar(200)
+  isRequired           Boolean               @default(true) @map("is_required")
+  createdAt            DateTime              @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime              @default(now()) @db.Timestamptz(6) @map("updated_at")
+  job                  Job                   @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submissionProofItems SubmissionProofItem[]
+
+  @@unique([jobId, position], map: "job_proof_position_uq")
+  @@index([proofType, jobId], map: "job_proof_type_idx")
+  @@map("job_proof_requirements")
+}
+
+model JobReport {
+  id               String          @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobId            String          @db.Uuid @map("job_id")
+  reporterUserId   String          @db.Uuid @map("reporter_user_id")
+  reason           JobReportReason
+  details          String?         @db.VarChar(300)
+  status           JobReportStatus @default(open)
+  handledByAdminId String?         @db.Uuid @map("handled_by_admin_id")
+  handledAt        DateTime?       @db.Timestamptz(6) @map("handled_at")
+  resolutionNote   String?         @db.VarChar(500) @map("resolution_note")
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime        @default(now()) @db.Timestamptz(6) @map("updated_at")
+  handledByAdmin   AdminUser?      @relation(fields: [handledByAdminId], references: [id], onUpdate: NoAction)
+  job              Job             @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reporterUser     User            @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([jobId, reporterUserId], map: "job_reports_once_uq")
+  @@index([jobId], map: "job_reports_job_idx")
+  @@map("job_reports")
+}
+
+model JobStep {
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobId     String   @db.Uuid @map("job_id")
+  position  Int      @db.SmallInt
+  body      String   @db.VarChar(300)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([jobId, position], map: "job_steps_position_uq")
+  @@map("job_steps")
+}
+
+model JobView {
+  id            String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobId         String   @db.Uuid @map("job_id")
+  viewerUserId  String?  @db.Uuid @map("viewer_user_id")
+  viewerKey     String   @db.VarChar(64) @map("viewer_key")
+  firstViewedAt DateTime @default(now()) @db.Timestamptz(6) @map("first_viewed_at")
+  lastViewedAt  DateTime @default(now()) @db.Timestamptz(6) @map("last_viewed_at")
+  viewCount     Int      @default(1) @map("view_count")
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  viewerUser    User?    @relation(fields: [viewerUserId], references: [id], onUpdate: NoAction)
+
+  @@unique([jobId, viewerKey], map: "job_views_viewer_uq")
+  @@index([jobId, firstViewedAt], map: "job_views_job_day_idx")
+  @@map("job_views")
+}
+
+model Job {
+  id                      String                   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicId                String                   @unique @db.VarChar(12) @map("public_id")
+  employerUserId          String                   @db.Uuid @map("employer_user_id")
+  categoryId              String?                  @db.Uuid @map("category_id")
+  title                   String                   @db.VarChar(80)
+  timePerTask             TimePerTask              @default(about_5) @map("time_per_task")
+  estMinutes              Int                      @default(5) @db.SmallInt @map("est_minutes")
+  displayMinutes          Int                      @default(5) @db.SmallInt @map("display_minutes")
+  openForDays             Int                      @default(7) @db.SmallInt @map("open_for_days")
+  eligibility             JobEligibility           @default(all_verified)
+  minApprovalRate         Int                      @default(80) @db.SmallInt @map("min_approval_rate")
+  taskLinkUrl             String?                  @db.VarChar(2048) @map("task_link_url")
+  proofInstructions       String?                  @db.VarChar(300) @map("proof_instructions")
+  proofTypes              ProofType[]              @default([]) @map("proof_types")
+  rules                   Json?
+  rewardUsd               Decimal?                 @db.Decimal(20, 6) @map("reward_usd")
+  slotsTotal              Int?                     @map("slots_total")
+  platformFeePercent      Decimal                  @default(0) @db.Decimal(7, 4) @map("platform_fee_percent")
+  feePerTaskUsd           Decimal                  @default(0) @db.Decimal(20, 6) @map("fee_per_task_usd")
+  reviewWindowHours       Int                      @default(72) @db.SmallInt @map("review_window_hours")
+  submissionsPerWorker    Int                      @default(1) @db.SmallInt @map("submissions_per_worker")
+  allowResubmission       Boolean                  @default(true) @map("allow_resubmission")
+  autoApprove             Boolean                  @default(true) @map("auto_approve")
+  pauseOnLowDeposit       Boolean                  @default(true) @map("pause_on_low_deposit")
+  status                  JobStatus                @default(draft)
+  pauseReason             PauseReason?             @map("pause_reason")
+  closeReason             CloseReason?             @map("close_reason")
+  wizardStep              Int                      @default(1) @db.SmallInt @map("wizard_step")
+  postingRulesAcceptedAt  DateTime?                @db.Timestamptz(6) @map("posting_rules_accepted_at")
+  publishedAt             DateTime?                @db.Timestamptz(6) @map("published_at")
+  endsAt                  DateTime?                @db.Timestamptz(6) @map("ends_at")
+  pausedAt                DateTime?                @db.Timestamptz(6) @map("paused_at")
+  closedAt                DateTime?                @db.Timestamptz(6) @map("closed_at")
+  suspendedAt             DateTime?                @db.Timestamptz(6) @map("suspended_at")
+  suspendedByAdminId      String?                  @db.Uuid @map("suspended_by_admin_id")
+  suspensionReason        String?                  @db.VarChar(300) @map("suspension_reason")
+  firstSubmissionAt       DateTime?                @db.Timestamptz(6) @map("first_submission_at")
+  countActiveReservations Int                      @default(0) @map("count_active_reservations")
+  countInReview           Int                      @default(0) @map("count_in_review")
+  countNeedsFix           Int                      @default(0) @map("count_needs_fix")
+  countApproved           Int                      @default(0) @map("count_approved")
+  countRejected           Int                      @default(0) @map("count_rejected")
+  countViews              Int                      @default(0) @map("count_views")
+  countStarts             Int                      @default(0) @map("count_starts")
+  slotsLeft               Int?                     @default(dbgenerated("((((COALESCE(slots_total, 0) - count_approved) - count_in_review) - count_needs_fix) - count_active_reservations)")) @map("slots_left")
+  spentUsd                Decimal                  @default(0) @db.Decimal(20, 6) @map("spent_usd")
+  reserveOutstandingUsd   Decimal                  @default(0) @db.Decimal(20, 6) @map("reserve_outstanding_usd")
+  avgReviewSeconds        Int?                     @map("avg_review_seconds")
+  avgCompletionSeconds    Int?                     @map("avg_completion_seconds")
+  duplicatedFromJobId     String?                  @db.Uuid @map("duplicated_from_job_id")
+  searchTsv               Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, (COALESCE(title, ''::character varying))::text)")) @map("search_tsv")
+  version                 Int                      @default(1)
+  deletedAt               DateTime?                @db.Timestamptz(6) @map("deleted_at")
+  moderationFlags         Json?                  @map("moderation_flags")
+  moderationFlaggedAt     DateTime?              @db.Timestamptz(6) @map("moderation_flagged_at")
+  createdAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  jobProofRequirements    JobProofRequirement[]
+  jobReports              JobReport[]
+  jobSteps                JobStep[]
+  jobViews                JobView[]
+  category                Category?                @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  duplicatedFromJob       Job?                     @relation("jobsTojobs", fields: [duplicatedFromJobId], references: [id], onUpdate: NoAction)
+  jobsByDuplicatedFromJob Job[]                    @relation("jobsTojobs")
+  employerUser            User                     @relation(fields: [employerUserId], references: [id], onUpdate: NoAction)
+  suspendedByAdmin        AdminUser?               @relation(fields: [suspendedByAdminId], references: [id], onUpdate: NoAction)
+  ledgerTransactions      LedgerTransaction[]
+  slotReservations        SlotReservation[]
+  submissions             Submission[]
+
+  @@index([proofTypes], map: "jobs_proof_types_gin", type: Gin)
+  @@index([searchTsv], map: "jobs_search_gin", type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], map: "jobs_title_trgm", type: Gin)
+  @@map("jobs")
+}
+
+model KycVerification {
+  id                 String          @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId             String          @db.Uuid @map("user_id")
+  documentType       KycDocumentType @map("document_type")
+  status             KycStatus       @default(pending)
+  frontUploadId      String          @db.Uuid @map("front_upload_id")
+  backUploadId       String?         @db.Uuid @map("back_upload_id")
+  selfieUploadId     String          @db.Uuid @map("selfie_upload_id")
+  documentNumberEnc  Bytes           @map("document_number_enc")
+  documentNumberHash Bytes           @map("document_number_hash")
+  documentLast4      String          @db.VarChar(4) @map("document_last4")
+  nameOnDocument     String?         @db.VarChar(80) @map("name_on_document")
+  submittedAt        DateTime        @default(now()) @db.Timestamptz(6) @map("submitted_at")
+  reviewDueAt        DateTime        @db.Timestamptz(6) @map("review_due_at")
+  reviewedAt         DateTime?       @db.Timestamptz(6) @map("reviewed_at")
+  reviewedByAdminId  String?         @db.Uuid @map("reviewed_by_admin_id")
+  rejectionReasonCode KycRejectionReason? @map("rejection_reason_code")
+  rejectionReason    String?         @db.VarChar(300) @map("rejection_reason")
+  verifiedAt         DateTime?       @db.Timestamptz(6) @map("verified_at")
+  retainUntil        DateTime?       @db.Timestamptz(6) @map("retain_until")
+  purgedAt           DateTime?       @db.Timestamptz(6) @map("purged_at")
+  dateOfBirthEnc        Bytes?                @map("date_of_birth_enc")
+  createdAt          DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime        @default(now()) @db.Timestamptz(6) @map("updated_at")
+  reviewedByAdmin    AdminUser?      @relation(fields: [reviewedByAdminId], references: [id], onUpdate: NoAction, map: "kyc_reviewed_by_fk")
+  backUpload         Upload?         @relation("kyc_verifications_back_upload_idTouploads", fields: [backUploadId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  frontUpload        Upload          @relation("kyc_verifications_front_upload_idTouploads", fields: [frontUploadId], references: [id], onUpdate: NoAction)
+  selfieUpload       Upload          @relation("kyc_verifications_selfie_upload_idTouploads", fields: [selfieUploadId], references: [id], onUpdate: NoAction)
+  user               User            @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([documentNumberHash], map: "kyc_doc_hash_idx")
+  @@index([userId, submittedAt(sort: Desc)], map: "kyc_user_idx")
+  @@map("kyc_verifications")
+}
+
+model LedgerEntry {
+  id            String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  transactionId String            @db.Uuid @map("transaction_id")
+  txSeq         BigInt            @map("tx_seq")
+  accountId     String            @db.Uuid @map("account_id")
+  displayType   LedgerTxType      @map("display_type")
+  amount        Decimal           @db.Decimal(20, 6)
+  balanceAfter  Decimal?          @db.Decimal(20, 6) @map("balance_after")
+  createdAt     DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  account       WalletAccount     @relation(fields: [accountId], references: [id], onUpdate: NoAction)
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onUpdate: NoAction)
+
+  @@unique([transactionId, accountId], map: "le_tx_account_uq")
+  @@index([accountId, txSeq(sort: Desc)], map: "le_account_seq_idx")
+  @@index([accountId, displayType, createdAt], map: "le_account_type_created_idx")
+  @@index([transactionId], map: "le_transaction_idx")
+  @@map("ledger_entries")
+}
+
+model LedgerTransaction {
+  id                                    String                    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  seq                                   BigInt                    @unique @default(autoincrement())
+  publicRef                             String?                   @unique @default(dbgenerated("fmt_ref('TX-'::text, seq, 5)")) @db.VarChar(12) @map("public_ref")
+  type                                  LedgerTxType
+  operationId                           String                    @db.Uuid @map("operation_id")
+  idempotencyKey                        String                    @unique @db.VarChar(120) @map("idempotency_key")
+  jobId                                 String?                   @db.Uuid @map("job_id")
+  submissionId                          String?                   @db.Uuid @map("submission_id")
+  depositId                             String?                   @db.Uuid @map("deposit_id")
+  withdrawalId                          String?                   @db.Uuid @map("withdrawal_id")
+  referralCommissionId                  String?                   @db.Uuid @map("referral_commission_id")
+  disputeId                             String?                   @db.Uuid @map("dispute_id")
+  reversesTxId                          String?                   @db.Uuid @map("reverses_tx_id")
+  createdByActor                        ActorType                 @map("created_by_actor")
+  createdByUserId                       String?                   @db.Uuid @map("created_by_user_id")
+  createdByAdminId                      String?                   @db.Uuid @map("created_by_admin_id")
+  approvedByAdminId                     String?                   @db.Uuid @map("approved_by_admin_id")
+  reasonCode                            String?                   @db.VarChar(30) @map("reason_code")
+  reason                                String?                   @db.VarChar(300)
+  descriptionParams                     Json                      @default("{}") @map("description_params")
+  occurredAt                            DateTime                  @default(now()) @db.Timestamptz(6) @map("occurred_at")
+  depositsByCreditLedgerTx              Deposit[]                 @relation("deposits_credit_ledger_tx_idToledger_transactions")
+  depositsByRefundLedgerTx              Deposit[]                 @relation("deposits_refund_ledger_tx_idToledger_transactions")
+  disputesByPayoutLedgerTx              Dispute[]                 @relation("disputes_payout_ledger_tx_idToledger_transactions")
+  ledgerAdjustmentRequests              LedgerAdjustmentRequest[]
+  ledgerEntries                         LedgerEntry[]
+  approvedByAdmin                       AdminUser?                @relation("ledger_transactions_approved_by_admin_idToadmin_users", fields: [approvedByAdminId], references: [id], onUpdate: NoAction)
+  createdByAdmin                        AdminUser?                @relation("ledger_transactions_created_by_admin_idToadmin_users", fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  createdByUser                         User?                     @relation(fields: [createdByUserId], references: [id], onUpdate: NoAction)
+  dispute                               Dispute?                  @relation("ledger_transactions_dispute_idTodisputes", fields: [disputeId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  job                                   Job?                      @relation(fields: [jobId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  reversesTx                            LedgerTransaction?        @relation("ledger_transactionsToledger_transactions", fields: [reversesTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  ledgerTransactionsByReversesTx        LedgerTransaction[]       @relation("ledger_transactionsToledger_transactions")
+  submission                            Submission?               @relation("ledger_transactions_submission_idTosubmissions", fields: [submissionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  deposit                               Deposit?                  @relation("ledger_transactions_deposit_idTodeposits", fields: [depositId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "ltx_deposit_fk")
+  referralCommission                    ReferralCommission?       @relation("ledger_transactions_referral_commission_idToreferral_commissions", fields: [referralCommissionId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "ltx_referral_commission_fk")
+  withdrawal                            Withdrawal?               @relation("ledger_transactions_withdrawal_idTowithdrawals", fields: [withdrawalId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "ltx_withdrawal_fk")
+  providerSettlementLines               ProviderSettlementLine[]
+  referralCommissionsByLedgerTx         ReferralCommission[]      @relation("referral_commissions_ledger_tx_idToledger_transactions")
+  referralCommissionsByReversalLedgerTx ReferralCommission[]      @relation("referral_commissions_reversal_ledger_tx_idToledger_transactions")
+  submissionsByPaidLedgerTx             Submission[]              @relation("submissions_paid_ledger_tx_idToledger_transactions")
+  withdrawalsByRequestLedgerTx          Withdrawal[]              @relation("withdrawals_request_ledger_tx_idToledger_transactions")
+  withdrawalsByReversalLedgerTx         Withdrawal[]              @relation("withdrawals_reversal_ledger_tx_idToledger_transactions")
+  withdrawalsBySettleLedgerTx           Withdrawal[]              @relation("withdrawals_settle_ledger_tx_idToledger_transactions")
+
+  @@index([operationId], map: "ltx_operation_idx")
+  @@index([type, occurredAt], map: "ltx_type_posted_idx")
+  @@map("ledger_transactions")
+}
+
+model LegalPage {
+  id                 String        @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  slug               LegalPageSlug
+  version            String        @db.VarChar(20)
+  title              String        @db.VarChar(80)
+  bodyMd             String        @map("body_md")
+  effectiveAt        DateTime      @db.Timestamptz(6) @map("effective_at")
+  isCurrent          Boolean       @default(false) @map("is_current")
+  publishedByAdminId String?       @db.Uuid @map("published_by_admin_id")
+  createdAt          DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime      @default(now()) @db.Timestamptz(6) @map("updated_at")
+  publishedByAdmin   AdminUser?    @relation(fields: [publishedByAdminId], references: [id], onUpdate: NoAction)
+
+  @@unique([slug, version], map: "legal_version_uq")
+  @@map("legal_pages")
+}
+
+model NotificationPreference {
+  userId       String              @db.Uuid @map("user_id")
+  prefKey      NotificationPrefKey @map("pref_key")
+  inAppEnabled Boolean             @default(true) @map("in_app_enabled")
+  emailEnabled Boolean             @default(true) @map("email_enabled")
+  isLocked     Boolean             @default(false) @map("is_locked")
+  updatedAt    DateTime            @default(now()) @db.Timestamptz(6) @map("updated_at")
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, prefKey])
+  @@map("notification_preferences")
+}
+
+model Notification {
+  id          String               @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId      String               @db.Uuid @map("user_id")
+  audience    ActiveMode
+  category    NotificationCategory
+  type        String               @db.VarChar(50)
+  title       String               @db.VarChar(120)
+  body        String               @db.VarChar(300)
+  linkPath    String?              @db.VarChar(300) @map("link_path")
+  data        Json                 @default("{}")
+  isMandatory Boolean              @default(false) @map("is_mandatory")
+  readAt      DateTime?            @db.Timestamptz(6) @map("read_at")
+  emailSentAt DateTime?            @db.Timestamptz(6) @map("email_sent_at")
+  dedupeKey   String?              @db.VarChar(120) @map("dedupe_key")
+  createdAt   DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  expiresAt   DateTime             @db.Timestamptz(6) @map("expires_at")
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "notif_expiry_idx")
+  @@index([userId, audience, createdAt(sort: Desc)], map: "notif_list_idx")
+  @@map("notifications")
+}
+
+model OtpChallenge {
+  id                String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId            String?    @db.Uuid @map("user_id")
+  purpose           OtpPurpose
+  channel           OtpChannel
+  destination       String     @db.VarChar(255)
+  codeHash          String     @db.VarChar(255) @map("code_hash")
+  attempts          Int        @default(0) @db.SmallInt
+  maxAttempts       Int        @default(5) @db.SmallInt @map("max_attempts")
+  sendCount         Int        @default(1) @db.SmallInt @map("send_count")
+  expiresAt         DateTime   @db.Timestamptz(6) @map("expires_at")
+  resendAvailableAt DateTime   @db.Timestamptz(6) @map("resend_available_at")
+  consumedAt        DateTime?  @db.Timestamptz(6) @map("consumed_at")
+  invalidatedAt     DateTime?  @db.Timestamptz(6) @map("invalidated_at")
+  requestIp         String?    @db.Inet @map("request_ip")
+  createdAt         DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime   @default(now()) @db.Timestamptz(6) @map("updated_at")
+  user              User?      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([createdAt], map: "otp_created_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "otp_user_idx")
+  @@map("otp_challenges")
+}
+
+model PasswordHistory {
+  id           String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId       String   @db.Uuid @map("user_id")
+  passwordHash String   @db.VarChar(255) @map("password_hash")
+  createdAt    DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "password_history_user_idx")
+  @@map("password_history")
+}
+
+model PaymentWebhookEvent {
+  id               String      @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  provider         String      @db.VarChar(40)
+  direction        String      @db.VarChar(10)
+  providerEventId  String      @db.VarChar(160) @map("provider_event_id")
+  eventType        String?     @db.VarChar(80) @map("event_type")
+  signatureValid   Boolean     @map("signature_valid")
+  rawBody          Bytes       @map("raw_body")
+  payload          Json?
+  headers          Json        @default("{}")
+  attempts         Int         @default(0) @db.SmallInt
+  processingResult String?     @db.VarChar(20) @map("processing_result")
+  errorMessage     String?     @db.VarChar(1000) @map("error_message")
+  depositId        String?     @db.Uuid @map("deposit_id")
+  withdrawalId     String?     @db.Uuid @map("withdrawal_id")
+  receivedAt       DateTime    @default(now()) @db.Timestamptz(6) @map("received_at")
+  processedAt      DateTime?   @db.Timestamptz(6) @map("processed_at")
+  deposit          Deposit?    @relation(fields: [depositId], references: [id], onUpdate: NoAction)
+  withdrawal       Withdrawal? @relation(fields: [withdrawalId], references: [id], onUpdate: NoAction)
+
+  @@unique([provider, providerEventId], map: "webhook_event_uq")
+  @@index([receivedAt], map: "webhook_received_idx")
+  @@map("payment_webhook_events")
+}
+
+model PayoutMethodConfig {
+  methodType            PayoutMethodType @id @map("method_type")
+  displayName           String           @db.VarChar(30) @map("display_name")
+  subtitle              String           @db.VarChar(40)
+  accountLabel          String           @db.VarChar(60) @map("account_label")
+  accountRegex          String           @db.VarChar(200) @map("account_regex")
+  payoutCurrency        String           @db.Char(4) @map("payout_currency")
+  minUsd                Decimal          @db.Decimal(20, 6) @map("min_usd")
+  maxPerRequestUsd      Decimal          @db.Decimal(20, 6) @map("max_per_request_usd")
+  maxPerDayUsd          Decimal          @db.Decimal(20, 6) @map("max_per_day_usd")
+  feeFixedUsd           Decimal          @default(0) @db.Decimal(20, 6) @map("fee_fixed_usd")
+  feePercent            Decimal          @default(0) @db.Decimal(7, 4) @map("fee_percent")
+  quickAmountsUsd       Json             @default("[]") @map("quick_amounts_usd")
+  etaText               String           @db.VarChar(80) @map("eta_text")
+  execution             String           @default("manual") @db.VarChar(10)
+  treasurySystemCode    String           @db.VarChar(60) @map("treasury_system_code")
+  enabled               Boolean          @default(true)
+  sortOrder             Int              @default(0) @db.SmallInt @map("sort_order")
+  updatedByAdminId      String?          @db.Uuid @map("updated_by_admin_id")
+  createdAt             DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime         @default(now()) @db.Timestamptz(6) @map("updated_at")
+  treasurySystemCodeRef WalletAccount    @relation(fields: [treasurySystemCode], references: [systemCode], onUpdate: NoAction)
+  updatedByAdmin        AdminUser?       @relation(fields: [updatedByAdminId], references: [id], onUpdate: NoAction)
+  payoutMethods         PayoutMethod[]
+
+  @@map("payout_method_configs")
+}
+
+model PayoutMethod {
+  id               String             @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId           String             @db.Uuid @map("user_id")
+  methodType       PayoutMethodType   @map("method_type")
+  accountLabel     String?            @db.VarChar(30) @map("account_label")
+  accountEncrypted Bytes              @map("account_encrypted")
+  keyId            String             @db.VarChar(120) @map("key_id")
+  accountHash      Bytes              @map("account_hash")
+  accountMasked    String             @db.VarChar(40) @map("account_masked")
+  accountLast3     String             @db.Char(3) @map("account_last3")
+  status           PayoutMethodStatus @default(active)
+  isDefault        Boolean            @default(false) @map("is_default")
+  verifiedAt       DateTime?          @db.Timestamptz(6) @map("verified_at")
+  usableFrom       DateTime           @default(now()) @db.Timestamptz(6) @map("usable_from")
+  lastUsedAt       DateTime?          @db.Timestamptz(6) @map("last_used_at")
+  deletedAt        DateTime?          @db.Timestamptz(6) @map("deleted_at")
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime           @default(now()) @db.Timestamptz(6) @map("updated_at")
+  methodTypeRef    PayoutMethodConfig @relation(fields: [methodType], references: [methodType], onUpdate: NoAction)
+  user             User               @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  withdrawalQuotes WithdrawalQuote[]
+  withdrawals      Withdrawal[]
+
+  @@index([accountHash], map: "pm_account_hash_idx")
+  @@map("payout_methods")
+}
+
+model PlatformSetting {
+  key              String     @id @db.VarChar(80)
+  value            Json
+  valueType        String     @db.VarChar(10) @map("value_type")
+  description      String     @db.VarChar(300)
+  sourceRef        String     @db.VarChar(40) @map("source_ref")
+  isPublic         Boolean    @default(false) @map("is_public")
+  updatedByAdminId String?    @db.Uuid @map("updated_by_admin_id")
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime   @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByAdmin   AdminUser? @relation(fields: [updatedByAdminId], references: [id], onUpdate: NoAction)
+
+  @@map("platform_settings")
+}
+
+model ReferralCommission {
+  id                                     String                   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  referralId                             String                   @db.Uuid @map("referral_id")
+  referrerUserId                         String                   @db.Uuid @map("referrer_user_id")
+  referredUserId                         String                   @db.Uuid @map("referred_user_id")
+  sourceType                             ReferralSourceType       @map("source_type")
+  submissionId                           String?                  @db.Uuid @map("submission_id")
+  depositId                              String?                  @db.Uuid @map("deposit_id")
+  baseAmount                             Decimal                  @db.Decimal(20, 6) @map("base_amount")
+  rate                                   Decimal                  @db.Decimal(7, 6)
+  amount                                 Decimal                  @db.Decimal(20, 6)
+  status                                 ReferralCommissionStatus @default(pending)
+  ledgerTxId                             String?                  @db.Uuid @map("ledger_tx_id")
+  reversalLedgerTxId                     String?                  @db.Uuid @map("reversal_ledger_tx_id")
+  creditedAt                             DateTime?                @db.Timestamptz(6) @map("credited_at")
+  reversedAt                             DateTime?                @db.Timestamptz(6) @map("reversed_at")
+  statusReason                           String?                  @db.VarChar(200) @map("status_reason")
+  createdAt                              DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                              DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  ledgerTransactionsByReferralCommission LedgerTransaction[]      @relation("ledger_transactions_referral_commission_idToreferral_commissions")
+  deposit                                Deposit?                 @relation(fields: [depositId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  ledgerTx                               LedgerTransaction?       @relation("referral_commissions_ledger_tx_idToledger_transactions", fields: [ledgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  referral                               Referral                 @relation(fields: [referralId], references: [id], onUpdate: NoAction)
+  referredUser                           User                     @relation("referral_commissions_referred_user_idTousers", fields: [referredUserId], references: [id], onUpdate: NoAction)
+  referrerUser                           User                     @relation("referral_commissions_referrer_user_idTousers", fields: [referrerUserId], references: [id], onUpdate: NoAction)
+  reversalLedgerTx                       LedgerTransaction?       @relation("referral_commissions_reversal_ledger_tx_idToledger_transactions", fields: [reversalLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  submission                             Submission?              @relation(fields: [submissionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([referralId, createdAt(sort: Desc)], map: "rc_referral_idx")
+  @@index([referrerUserId, status, createdAt(sort: Desc)], map: "rc_referrer_idx")
+  @@map("referral_commissions")
+}
+
+model Referral {
+  id                  String               @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  referrerUserId      String               @db.Uuid @map("referrer_user_id")
+  referredUserId      String               @unique @db.Uuid @map("referred_user_id")
+  codeUsed            String               @db.VarChar(12) @map("code_used")
+  attributedVia       String               @db.VarChar(10) @map("attributed_via")
+  status              ReferralStatus       @default(not_started)
+  ineligibleReason    String?              @db.VarChar(30) @map("ineligible_reason")
+  eligibleAt          DateTime?            @db.Timestamptz(6) @map("eligible_at")
+  activatedAt         DateTime?            @db.Timestamptz(6) @map("activated_at")
+  lastActivityAt      DateTime?            @db.Timestamptz(6) @map("last_activity_at")
+  reminderCount       Int                  @default(0) @db.SmallInt @map("reminder_count")
+  lastRemindedAt      DateTime?            @db.Timestamptz(6) @map("last_reminded_at")
+  riskScore         Int?                  @db.SmallInt @map("risk_score")
+  riskFlags         String[]              @default([]) @map("risk_flags")
+  createdAt           DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime             @default(now()) @db.Timestamptz(6) @map("updated_at")
+  referralCommissions ReferralCommission[]
+  referredUser        User                 @relation("referrals_referred_user_idTousers", fields: [referredUserId], references: [id], onUpdate: NoAction)
+  referrerUser        User                 @relation("referrals_referrer_user_idTousers", fields: [referrerUserId], references: [id], onUpdate: NoAction)
+
+  @@index([referrerUserId, status, createdAt(sort: Desc)], map: "referrals_referrer_idx")
+  @@map("referrals")
+}
+
+model SlotReservation {
+  id               String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobId            String            @db.Uuid @map("job_id")
+  workerUserId     String            @db.Uuid @map("worker_user_id")
+  status           ReservationStatus @default(active)
+  startedAt        DateTime          @default(now()) @db.Timestamptz(6) @map("started_at")
+  expiresAt        DateTime          @db.Timestamptz(6) @map("expires_at")
+  stepsChecked     Int[]             @default([]) @db.SmallInt @map("steps_checked")
+  draft            Json?
+  draftSavedAt     DateTime?         @db.Timestamptz(6) @map("draft_saved_at")
+  submittedAt      DateTime?         @db.Timestamptz(6) @map("submitted_at")
+  releasedAt       DateTime?         @db.Timestamptz(6) @map("released_at")
+  expiredAt        DateTime?         @db.Timestamptz(6) @map("expired_at")
+  cancelledAt      DateTime?         @db.Timestamptz(6) @map("cancelled_at")
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime          @default(now()) @db.Timestamptz(6) @map("updated_at")
+  job              Job               @relation(fields: [jobId], references: [id], onUpdate: NoAction)
+  workerUser       User              @relation(fields: [workerUserId], references: [id], onUpdate: NoAction)
+  submissionEvents SubmissionEvent[]
+  submission       Submission?
+
+  @@index([jobId, status], map: "res_job_idx")
+  @@index([workerUserId, startedAt(sort: Desc)], map: "res_worker_idx")
+  @@map("slot_reservations")
+}
+
+model SubmissionAttempt {
+  id                    String                @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  submissionId          String                @db.Uuid @map("submission_id")
+  attemptNo             Int                   @db.SmallInt @map("attempt_no")
+  workerNote            String?               @db.VarChar(300) @map("worker_note")
+  changeNote            String?               @db.VarChar(300) @map("change_note")
+  attestationAcceptedAt DateTime              @db.Timestamptz(6) @map("attestation_accepted_at")
+  stepsChecked          Int[]                 @default([]) @db.SmallInt @map("steps_checked")
+  submittedAt           DateTime              @default(now()) @db.Timestamptz(6) @map("submitted_at")
+  decision              SubmissionStatus?
+  decidedAt             DateTime?             @db.Timestamptz(6) @map("decided_at")
+  rejectionReasonCode   RejectionReasonCode?  @map("rejection_reason_code")
+  rejectionReasonText   String?               @db.VarChar(300) @map("rejection_reason_text")
+  annotations           Json?
+  autoCheck             Json?                 @map("auto_check")
+  createdAt             DateTime              @default(now()) @db.Timestamptz(6) @map("created_at")
+  submission            Submission            @relation(fields: [submissionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submissionProofItems  SubmissionProofItem[]
+
+  @@unique([submissionId, attemptNo], map: "attempt_no_uq")
+  @@map("submission_attempts")
+}
+
+model SubmissionEvent {
+  id            String              @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  reservationId String              @db.Uuid @map("reservation_id")
+  submissionId  String?             @db.Uuid @map("submission_id")
+  eventType     SubmissionEventType @map("event_type")
+  actorType     ActorType           @map("actor_type")
+  actorUserId   String?             @db.Uuid @map("actor_user_id")
+  actorAdminId  String?             @db.Uuid @map("actor_admin_id")
+  data          Json                @default("{}")
+  occurredAt    DateTime            @default(now()) @db.Timestamptz(6) @map("occurred_at")
+  actorAdmin    AdminUser?          @relation(fields: [actorAdminId], references: [id], onUpdate: NoAction)
+  actorUser     User?               @relation(fields: [actorUserId], references: [id], onUpdate: NoAction)
+  reservation   SlotReservation     @relation(fields: [reservationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submission    Submission?         @relation(fields: [submissionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([reservationId, occurredAt(sort: Desc)], map: "sub_events_reservation_idx")
+  @@index([submissionId, occurredAt(sort: Desc)], map: "sub_events_submission_idx")
+  @@map("submission_events")
+}
+
+model SubmissionProofItem {
+  id                 String              @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  attemptId          String              @db.Uuid @map("attempt_id")
+  proofRequirementId String              @db.Uuid @map("proof_requirement_id")
+  proofType          ProofType           @map("proof_type")
+  linkUrl            String?             @db.VarChar(2048) @map("link_url")
+  textValue          String?             @db.VarChar(2000) @map("text_value")
+  uploadId           String?             @db.Uuid @map("upload_id")
+  linkCheckStatus    Int?                @db.SmallInt @map("link_check_status")
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6) @map("created_at")
+  attempt            SubmissionAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  proofRequirement   JobProofRequirement @relation(fields: [proofRequirementId], references: [id], onUpdate: NoAction)
+  upload             Upload?             @relation(fields: [uploadId], references: [id], onUpdate: NoAction)
+
+  @@unique([attemptId, proofRequirementId], map: "proof_item_uq")
+  @@map("submission_proof_items")
+}
+
+model Submission {
+  id                             String               @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicRef                      String               @unique @default(dbgenerated("fmt_ref('SB-'::text, nextval('submission_ref_seq'::regclass), 6)")) @db.VarChar(12) @map("public_ref")
+  jobId                          String               @db.Uuid @map("job_id")
+  reservationId                  String               @unique @db.Uuid @map("reservation_id")
+  workerUserId                   String               @db.Uuid @map("worker_user_id")
+  employerUserId                 String               @db.Uuid @map("employer_user_id")
+  status                         SubmissionStatus     @default(in_review)
+  rewardUsd                      Decimal              @db.Decimal(20, 6) @map("reward_usd")
+  feeUsd                         Decimal              @default(0) @db.Decimal(20, 6) @map("fee_usd")
+  currentAttemptNo               Int                  @default(1) @db.SmallInt @map("current_attempt_no")
+  resubmissionCount              Int                  @default(0) @db.SmallInt @map("resubmission_count")
+  firstSubmittedAt               DateTime             @default(now()) @db.Timestamptz(6) @map("first_submitted_at")
+  lastSubmittedAt                DateTime             @default(now()) @db.Timestamptz(6) @map("last_submitted_at")
+  reviewDueAt                    DateTime             @db.Timestamptz(6) @map("review_due_at")
+  decidedAt                      DateTime?            @db.Timestamptz(6) @map("decided_at")
+  decisionSource                 DecisionSource?      @map("decision_source")
+  decidedByUserId                String?              @db.Uuid @map("decided_by_user_id")
+  decidedByAdminId               String?              @db.Uuid @map("decided_by_admin_id")
+  rejectionReasonCode            RejectionReasonCode? @map("rejection_reason_code")
+  rejectionReasonText            String?              @db.VarChar(300) @map("rejection_reason_text")
+  fixAllowed                     Boolean?             @map("fix_allowed")
+  resubmitDeadline               DateTime?            @db.Timestamptz(6) @map("resubmit_deadline")
+  finalAt                        DateTime?            @db.Timestamptz(6) @map("final_at")
+  paidLedgerTxId                 String?              @db.Uuid @map("paid_ledger_tx_id")
+  autoCheck                      Json?                @map("auto_check")
+  duplicateSuspected             Boolean              @default(false) @map("duplicate_suspected")
+  escalatedAt                    DateTime?            @db.Timestamptz(6) @map("escalated_at")
+  disputeOpen                    Boolean              @default(false) @map("dispute_open")
+  timersPausedAt        DateTime?                @db.Timestamptz(6) @map("timers_paused_at")
+  createdAt                      DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                      DateTime             @default(now()) @db.Timestamptz(6) @map("updated_at")
+  dispute                        Dispute?
+  ledgerTransactionsBySubmission LedgerTransaction[]  @relation("ledger_transactions_submission_idTosubmissions")
+  referralCommissions            ReferralCommission[]
+  submissionAttempts             SubmissionAttempt[]
+  submissionEvents               SubmissionEvent[]
+  paidLedgerTx                   LedgerTransaction?   @relation("submissions_paid_ledger_tx_idToledger_transactions", fields: [paidLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "sub_paid_tx_fk")
+  decidedByAdmin                 AdminUser?           @relation(fields: [decidedByAdminId], references: [id], onUpdate: NoAction)
+  decidedByUser                  User?                @relation("submissions_decided_by_user_idTousers", fields: [decidedByUserId], references: [id], onUpdate: NoAction)
+  employerUser                   User                 @relation("submissions_employer_user_idTousers", fields: [employerUserId], references: [id], onUpdate: NoAction)
+  job                            Job                  @relation(fields: [jobId], references: [id], onUpdate: NoAction)
+  reservation                    SlotReservation      @relation(fields: [reservationId], references: [id], onUpdate: NoAction)
+  workerUser                     User                 @relation("submissions_worker_user_idTousers", fields: [workerUserId], references: [id], onUpdate: NoAction)
+
+  @@unique([jobId, workerUserId], map: "sub_one_per_worker_uq")
+  @@index([employerUserId, status, lastSubmittedAt], map: "sub_employer_queue_idx")
+  @@index([jobId, decidedAt], map: "sub_job_decided_idx")
+  @@index([jobId, status, lastSubmittedAt], map: "sub_job_queue_idx")
+  @@index([workerUserId, status, lastSubmittedAt(sort: Desc)], map: "sub_worker_list_idx")
+  @@map("submissions")
+}
+
+model SupportReply {
+  id               String         @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  contactMessageId String         @db.Uuid @map("contact_message_id")
+  adminUserId      String         @db.Uuid @map("admin_user_id")
+  body             String
+  emailSentAt      DateTime?      @db.Timestamptz(6) @map("email_sent_at")
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")
+  contactMessage   ContactMessage @relation(fields: [contactMessageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  adminUser        AdminUser      @relation(fields: [adminUserId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([contactMessageId, createdAt], map: "support_replies_message_idx")
+  @@map("support_replies")
+}
+
+model TrustedDevice {
+  id           String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId       String    @db.Uuid @map("user_id")
+  deviceHash   Bytes     @map("device_hash")
+  firstSeenAt  DateTime  @default(now()) @db.Timestamptz(6) @map("first_seen_at")
+  lastSeenAt   DateTime  @default(now()) @db.Timestamptz(6) @map("last_seen_at")
+  trustedUntil DateTime  @db.Timestamptz(6) @map("trusted_until")
+  lastIp       String?   @db.Inet @map("last_ip")
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, deviceHash], map: "trusted_devices_user_device_key")
+  @@index([deviceHash], map: "trusted_devices_device_idx")
+  @@map("trusted_devices")
+}
+
+model Upload {
+  id                             String                    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  ownerUserId                    String?                   @db.Uuid @map("owner_user_id")
+  ownerAdminId                   String?                   @db.Uuid @map("owner_admin_id")
+  purpose                        UploadPurpose
+  status                         UploadStatus              @default(pending)
+  storageBucket                  String                    @db.VarChar(63) @map("storage_bucket")
+  storageKey                     String?                   @db.VarChar(512) @map("storage_key")
+  storageKeyEnc                  Bytes?                    @map("storage_key_enc")
+  originalFilename               String                    @db.VarChar(255) @map("original_filename")
+  mimeType                       String                    @db.VarChar(100) @map("mime_type")
+  sizeBytes                      Int                       @map("size_bytes")
+  sha256                         Bytes?
+  phash                          BigInt?
+  widthPx                        Int?                      @map("width_px")
+  heightPx                       Int?                      @map("height_px")
+  completedAt                    DateTime?                 @db.Timestamptz(6) @map("completed_at")
+  deleteAfter                    DateTime?                 @db.Timestamptz(6) @map("delete_after")
+  deletedAt                      DateTime?                 @db.Timestamptz(6) @map("deleted_at")
+  createdAt                      DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                      DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  appeals                        Appeal[]
+  disputes                       Dispute[] @relation("DisputeEvidence1")
+  disputesEvidence2              Dispute[] @relation("DisputeEvidence2")
+  disputesEvidence3              Dispute[] @relation("DisputeEvidence3")
+  employerProfiles               EmployerProfile[]
+  kycVerificationsByBackUpload   KycVerification[]         @relation("kyc_verifications_back_upload_idTouploads")
+  kycVerificationsByFrontUpload  KycVerification[]         @relation("kyc_verifications_front_upload_idTouploads")
+  kycVerificationsBySelfieUpload KycVerification[]         @relation("kyc_verifications_selfie_upload_idTouploads")
+  ledgerAdjustmentRequests       LedgerAdjustmentRequest[]
+  submissionProofItems           SubmissionProofItem[]
+  ownerAdmin                     AdminUser?                @relation(fields: [ownerAdminId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "uploads_owner_admin_fk")
+  ownerUser                      User?                     @relation("uploads_owner_user_idTousers", fields: [ownerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "uploads_owner_user_fk")
+  usersByAvatarUpload            User[]                    @relation("users_avatar_upload_idTouploads")
+
+  @@index([ownerUserId, purpose], map: "uploads_owner_idx")
+  @@map("uploads")
+}
+
+model UserInterest {
+  userId     String   @db.Uuid @map("user_id")
+  categoryId String   @db.Uuid @map("category_id")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, categoryId])
+  @@index([categoryId], map: "user_interests_category_idx")
+  @@map("user_interests")
+}
+
+model User {
+  id                                String                   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicId                          String                   @unique @db.VarChar(9) @map("public_id")
+  fullName                          String?                  @db.VarChar(80) @map("full_name")
+  email                             String?                  @unique @db.Citext
+  emailVerifiedAt                   DateTime?                @db.Timestamptz(6) @map("email_verified_at")
+  emailStatus                       String                   @default("ok") @db.VarChar(12) @map("email_status")
+  phoneE164                         String?                  @unique @db.VarChar(16) @map("phone_e164")
+  phoneVerifiedAt                   DateTime?                @db.Timestamptz(6) @map("phone_verified_at")
+  passwordHash                      String?                  @db.VarChar(255) @map("password_hash")
+  passwordChangedAt                 DateTime?                @db.Timestamptz(6) @map("password_changed_at")
+  countryCode                       String                   @default("BD") @db.Char(2) @map("country_code")
+  status                            UserStatus               @default(active)
+  activeMode                        ActiveMode               @default(worker) @map("active_mode")
+  defaultMode                       ActiveMode               @default(worker) @map("default_mode")
+  signupRole                        ActiveMode               @default(worker) @map("signup_role")
+  referralCode                      String?                  @db.VarChar(12) @map("referral_code")
+  avatarUploadId                    String?                  @db.Uuid @map("avatar_upload_id")
+  twoStepEnabled                    Boolean                  @default(false) @map("two_step_enabled")
+  withdrawalPasswordRequired        Boolean                  @default(true) @map("withdrawal_password_required")
+  emailDigestEnabled                Boolean                  @default(true) @map("email_digest_enabled")
+  kycStatus                         KycStatus                @default(not_submitted) @map("kyc_status")
+  kycVerifiedAt                     DateTime?                @db.Timestamptz(6) @map("kyc_verified_at")
+  onboardingStep                    Int                      @default(1) @db.SmallInt @map("onboarding_step")
+  onboardingCompletedAt             DateTime?                @db.Timestamptz(6) @map("onboarding_completed_at")
+  termsAcceptedAt                   DateTime                 @db.Timestamptz(6) @map("terms_accepted_at")
+  termsVersion                      String                   @db.VarChar(20) @map("terms_version")
+  signupIp                          String?                  @db.Inet @map("signup_ip")
+  lastLoginAt                       DateTime?                @db.Timestamptz(6) @map("last_login_at")
+  failedLoginCount                  Int                      @default(0) @db.SmallInt @map("failed_login_count")
+  lockedUntil                       DateTime?                @db.Timestamptz(6) @map("locked_until")
+  closedAt                          DateTime?                @db.Timestamptz(6) @map("closed_at")
+  anonymisedAt                      DateTime?                @db.Timestamptz(6) @map("anonymised_at")
+  setupCardDismissedAt              DateTime?                @db.Timestamptz(6) @map("setup_card_dismissed_at")
+  createdAt                         DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                         DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  accountRestrictions               AccountRestriction[]
+  appeals                           Appeal[]
+  auditLogs                         AuditLog[]
+  authSessions                      AuthSession[]
+  contactMessages                   ContactMessage[]
+  deposits                          Deposit[]
+  disputesByEmployerUser            Dispute[]                @relation("disputes_employer_user_idTousers")
+  disputesByWorkerUser              Dispute[]                @relation("disputes_worker_user_idTousers")
+  employerProfile                   EmployerProfile?
+  jobReports                        JobReport[]
+  jobViews                          JobView[]
+  jobs                              Job[]
+  kycVerifications                  KycVerification[]
+  ledgerTransactions                LedgerTransaction[]
+  notificationPreferences           NotificationPreference[]
+  notifications                     Notification[]
+  otpChallenges                     OtpChallenge[]
+  passwordHistories                 PasswordHistory[]
+  payoutMethods                     PayoutMethod[]
+  referralCommissionsByReferredUser ReferralCommission[]     @relation("referral_commissions_referred_user_idTousers")
+  referralCommissionsByReferrerUser ReferralCommission[]     @relation("referral_commissions_referrer_user_idTousers")
+  referralByReferredUser            Referral?                @relation("referrals_referred_user_idTousers")
+  referralsByReferrerUser           Referral[]               @relation("referrals_referrer_user_idTousers")
+  slotReservations                  SlotReservation[]
+  submissionEvents                  SubmissionEvent[]
+  submissionsByDecidedByUser        Submission[]             @relation("submissions_decided_by_user_idTousers")
+  submissionsByEmployerUser         Submission[]             @relation("submissions_employer_user_idTousers")
+  submissionsByWorkerUser           Submission[]             @relation("submissions_worker_user_idTousers")
+  uploadsByOwnerUser                Upload[]                 @relation("uploads_owner_user_idTousers")
+  userInterests                     UserInterest[]
+  avatarUpload                      Upload?                  @relation("users_avatar_upload_idTouploads", fields: [avatarUploadId], references: [id], onUpdate: NoAction)
+  walletAccounts                    WalletAccount[]
+  withdrawalEvents                  WithdrawalEvent[]
+  withdrawalQuotes                  WithdrawalQuote[]
+  withdrawals                       Withdrawal[]
+  workerProfile                     WorkerProfile?
+
+  trustedDevices                    TrustedDevice[]
+  @@index([createdAt])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], map: "users_full_name_trgm", type: Gin)
+  @@map("users")
+}
+
+model WalletAccount {
+  id                       String                    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  ownerUserId              String?                   @db.Uuid @map("owner_user_id")
+  kind                     WalletAccountKind
+  systemCode               String?                   @unique @db.VarChar(60) @map("system_code")
+  currency                 String                    @default("USD") @db.Char(3)
+  isSystem                 Boolean?                  @default(dbgenerated("(owner_user_id IS NULL)")) @map("is_system")
+  balanceCached            Decimal                   @default(0) @db.Decimal(20, 6) @map("balance_cached")
+  allowNegative            Boolean                   @default(false) @map("allow_negative")
+  lastEntryAt              DateTime?                 @db.Timestamptz(6) @map("last_entry_at")
+  version                  BigInt                    @default(0)
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  ledgerAdjustmentRequests LedgerAdjustmentRequest[]
+  ledgerEntries            LedgerEntry[]
+  payoutMethodConfigs      PayoutMethodConfig[]
+  ownerUser                User?                     @relation(fields: [ownerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@map("wallet_accounts")
+}
+
+model WithdrawalEvent {
+  id           String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  withdrawalId String            @db.Uuid @map("withdrawal_id")
+  fromStatus   WithdrawalStatus? @map("from_status")
+  toStatus     WithdrawalStatus  @map("to_status")
+  actorType    ActorType         @map("actor_type")
+  actorUserId  String?           @db.Uuid @map("actor_user_id")
+  actorAdminId String?           @db.Uuid @map("actor_admin_id")
+  note         String?           @db.VarChar(300)
+  data         Json              @default("{}")
+  occurredAt   DateTime          @default(now()) @db.Timestamptz(6) @map("occurred_at")
+  actorAdmin   AdminUser?        @relation(fields: [actorAdminId], references: [id], onUpdate: NoAction)
+  actorUser    User?             @relation(fields: [actorUserId], references: [id], onUpdate: NoAction)
+  withdrawal   Withdrawal        @relation(fields: [withdrawalId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([withdrawalId, occurredAt], map: "wd_events_wd_idx")
+  @@map("withdrawal_events")
+}
+
+model Withdrawal {
+  id                             String                @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  publicRef                      String                @unique @default(dbgenerated("fmt_ref('WD-'::text, nextval('withdrawal_ref_seq'::regclass), 5)")) @db.VarChar(12) @map("public_ref")
+  userId                         String                @db.Uuid @map("user_id")
+  payoutMethodId                 String                @db.Uuid @map("payout_method_id")
+  quoteId                        String?               @db.Uuid @map("quote_id")
+  batchId                        String?               @db.Uuid @map("batch_id")
+  method                         PayoutMethodType
+  destinationMasked              String                @db.VarChar(40) @map("destination_masked")
+  destinationEncrypted           Bytes                 @map("destination_encrypted")
+  keyId                          String                @db.VarChar(120) @map("key_id")
+  amountUsd                      Decimal               @db.Decimal(20, 6) @map("amount_usd")
+  feeUsd                         Decimal               @default(0) @db.Decimal(20, 6) @map("fee_usd")
+  netUsd                         Decimal?              @default(dbgenerated("(amount_usd - fee_usd)")) @db.Decimal(20, 6) @map("net_usd")
+  payoutCurrency                 String                @db.Char(4) @map("payout_currency")
+  exchangeRateId                 String?               @db.Uuid @map("exchange_rate_id")
+  fxRate                         Decimal               @db.Decimal(20, 6) @map("fx_rate")
+  payoutAmount                   Decimal               @db.Decimal(20, 6) @map("payout_amount")
+  status                         WithdrawalStatus      @default(requested)
+  requestedAt                    DateTime              @default(now()) @db.Timestamptz(6) @map("requested_at")
+  holdUntil                      DateTime?             @db.Timestamptz(6) @map("hold_until")
+  processingAt                   DateTime?             @db.Timestamptz(6) @map("processing_at")
+  paidAt                         DateTime?             @db.Timestamptz(6) @map("paid_at")
+  rejectedAt                     DateTime?             @db.Timestamptz(6) @map("rejected_at")
+  cancelledAt                    DateTime?             @db.Timestamptz(6) @map("cancelled_at")
+  failedAt                       DateTime?             @db.Timestamptz(6) @map("failed_at")
+  rejectReasonCode               String?               @db.VarChar(30) @map("reject_reason_code")
+  rejectReasonText               String?               @db.VarChar(300) @map("reject_reason_text")
+  riskFlags                      String[]              @default([]) @map("risk_flags")
+  providerTrxId                  String?               @db.VarChar(120) @map("provider_trx_id")
+  processedByAdminId             String?               @db.Uuid @map("processed_by_admin_id")
+  requestLedgerTxId              String                @db.Uuid @map("request_ledger_tx_id")
+  settleLedgerTxId               String?               @db.Uuid @map("settle_ledger_tx_id")
+  reversalLedgerTxId             String?               @db.Uuid @map("reversal_ledger_tx_id")
+  createdAt                      DateTime              @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                      DateTime              @default(now()) @db.Timestamptz(6) @map("updated_at")
+  ledgerTransactionsByWithdrawal LedgerTransaction[]   @relation("ledger_transactions_withdrawal_idTowithdrawals")
+  paymentWebhookEvents           PaymentWebhookEvent[]
+  withdrawalEvents               WithdrawalEvent[]
+  batch                          WithdrawalBatche?     @relation(fields: [batchId], references: [id], onUpdate: NoAction, map: "wd_batch_fk")
+  quote                          WithdrawalQuote?      @relation(fields: [quoteId], references: [id], onUpdate: NoAction, map: "wd_quote_fk")
+  exchangeRate                   ExchangeRate?         @relation(fields: [exchangeRateId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  payoutMethod                   PayoutMethod          @relation(fields: [payoutMethodId], references: [id], onUpdate: NoAction)
+  processedByAdmin               AdminUser?            @relation(fields: [processedByAdminId], references: [id], onUpdate: NoAction)
+  requestLedgerTx                LedgerTransaction     @relation("withdrawals_request_ledger_tx_idToledger_transactions", fields: [requestLedgerTxId], references: [id], onUpdate: NoAction)
+  reversalLedgerTx               LedgerTransaction?    @relation("withdrawals_reversal_ledger_tx_idToledger_transactions", fields: [reversalLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  settleLedgerTx                 LedgerTransaction?    @relation("withdrawals_settle_ledger_tx_idToledger_transactions", fields: [settleLedgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  user                           User                  @relation(fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([userId, requestedAt(sort: Desc)], map: "wd_user_list_idx")
+  @@index([userId, status], map: "wd_user_status_idx")
+  @@map("withdrawals")
+}
+
+model WorkerProfile {
+  userId            String          @id @db.Uuid @map("user_id")
+  interestTime      InterestTime?   @map("interest_time")
+  interestDevice    InterestDevice? @map("interest_device")
+  approvalRatePct   Int?            @db.SmallInt @map("approval_rate_pct")
+  approved30d       Int             @default(0) @map("approved_30d")
+  rejected30d       Int             @default(0) @map("rejected_30d")
+  approvedTotal     Int             @default(0) @map("approved_total")
+  statsRefreshedAt  DateTime?       @db.Timestamptz(6) @map("stats_refreshed_at")
+  firstWithdrawalAt DateTime?       @db.Timestamptz(6) @map("first_withdrawal_at")
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime        @default(now()) @db.Timestamptz(6) @map("updated_at")
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([approvalRatePct], map: "worker_profiles_rate_idx")
+  @@map("worker_profiles")
+}
+
+model LedgerAdjustmentRequest {
+  id               String             @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  accountId        String             @db.Uuid @map("account_id")
+  amount           Decimal            @db.Decimal(20, 6)
+  reasonCode       String             @db.VarChar(30) @map("reason_code")
+  internalNote     String             @db.VarChar(1000) @map("internal_note")
+  visibleText      String             @db.VarChar(120) @map("visible_text")
+  evidenceUploadId String?            @db.Uuid @map("evidence_upload_id")
+  status           String             @default("pending_approval") @db.VarChar(20)
+  createdByAdminId String             @db.Uuid @map("created_by_admin_id")
+  decidedByAdminId String?            @db.Uuid @map("decided_by_admin_id")
+  decidedAt        DateTime?          @db.Timestamptz(6) @map("decided_at")
+  decisionNote     String?            @db.VarChar(500) @map("decision_note")
+  ledgerTxId       String?            @db.Uuid @map("ledger_tx_id")
+  expiresAt        DateTime           @db.Timestamptz(6) @map("expires_at")
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime           @default(now()) @db.Timestamptz(6) @map("updated_at")
+  account          WalletAccount      @relation(fields: [accountId], references: [id], onUpdate: NoAction)
+  createdByAdmin   AdminUser          @relation("ledger_adjustment_requests_created_by_admin_idToadmin_users", fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  decidedByAdmin   AdminUser?         @relation("ledger_adjustment_requests_decided_by_admin_idToadmin_users", fields: [decidedByAdminId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  evidenceUpload   Upload?            @relation(fields: [evidenceUploadId], references: [id], onUpdate: NoAction)
+  ledgerTx         LedgerTransaction? @relation(fields: [ledgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@map("ledger_adjustment_requests")
+}
+
+model ProviderSettlementLine {
+  id                String             @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  settlementId      String             @db.Uuid @map("settlement_id")
+  provider          String             @db.VarChar(40)
+  providerPaymentId String             @db.VarChar(120) @map("provider_payment_id")
+  grossAmount       Decimal            @db.Decimal(20, 6) @map("gross_amount")
+  feeAmount         Decimal            @default(0) @db.Decimal(20, 6) @map("fee_amount")
+  netAmount         Decimal            @db.Decimal(20, 6) @map("net_amount")
+  currency          String             @db.VarChar(10)
+  settledOn         DateTime           @db.Date @map("settled_on")
+  depositId         String?            @db.Uuid @map("deposit_id")
+  matchStatus       String             @default("unmatched") @db.VarChar(20) @map("match_status")
+  ledgerTxId        String?            @db.Uuid @map("ledger_tx_id")
+  raw               Json               @default("{}")
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6) @map("created_at")
+  deposit           Deposit?           @relation(fields: [depositId], references: [id], onUpdate: NoAction)
+  ledgerTx          LedgerTransaction? @relation(fields: [ledgerTxId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([provider, providerPaymentId], map: "psl_line_uq")
+  @@index([settlementId], map: "psl_settlement_idx")
+  @@map("provider_settlement_lines")
+}
+
+model ProviderStatementLine {
+  id            String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  rail          String   @db.VarChar(60)
+  providerTrxId String   @db.VarChar(120) @map("provider_trx_id")
+  direction     String   @db.VarChar(3)
+  amount        Decimal  @db.Decimal(20, 6)
+  currency      String   @db.VarChar(10)
+  counterparty  String?  @db.VarChar(120)
+  category      String?  @db.VarChar(30)
+  occurredAt    DateTime @db.Timestamptz(6) @map("occurred_at")
+  importSha256  Bytes?   @map("import_sha256")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@unique([rail, providerTrxId], map: "pstl_line_uq")
+  @@index([rail, occurredAt], map: "pstl_occurred_idx")
+  @@index([providerTrxId], map: "pstl_trx_idx")
+  @@map("provider_statement_lines")
+}
+
+model ReconciliationItem {
+  id                String            @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  runId             String            @db.Uuid @map("run_id")
+  checkCode         String            @db.VarChar(10) @map("check_code")
+  severity          String            @db.VarChar(10)
+  entityType        String?           @db.VarChar(40) @map("entity_type")
+  entityRef         String?           @db.VarChar(40) @map("entity_ref")
+  detail            Json              @default("{}")
+  resolvedAt        DateTime?         @db.Timestamptz(6) @map("resolved_at")
+  resolvedByAdminId String?           @db.Uuid @map("resolved_by_admin_id")
+  resolutionNote    String?           @db.VarChar(500) @map("resolution_note")
+  createdAt         DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  resolvedByAdmin   AdminUser?        @relation(fields: [resolvedByAdminId], references: [id], onUpdate: NoAction)
+  run               ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([runId], map: "ri_run_idx")
+  @@map("reconciliation_items")
+}
+
+model ReconciliationRun {
+  id                  String               @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  jobName             String               @db.VarChar(40) @map("job_name")
+  status              String               @default("running") @db.VarChar(10)
+  startedAt           DateTime             @default(now()) @db.Timestamptz(6) @map("started_at")
+  finishedAt          DateTime?            @db.Timestamptz(6) @map("finished_at")
+  itemCount           Int                  @default(0) @map("item_count")
+  summary             Json                 @default("{}")
+  reconciliationItems ReconciliationItem[]
+
+  @@index([jobName, startedAt(sort: Desc)], map: "rr_job_idx")
+  @@map("reconciliation_runs")
+}
+
+model WithdrawalBatche {
+  id               String           @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  method           PayoutMethodType
+  status           String           @default("exported") @db.VarChar(12)
+  rowCount         Int              @map("row_count")
+  totalAmountUsd   Decimal          @db.Decimal(20, 6) @map("total_amount_usd")
+  exportSha256     Bytes?           @map("export_sha256")
+  createdByAdminId String           @db.Uuid @map("created_by_admin_id")
+  importedAt       DateTime?        @db.Timestamptz(6) @map("imported_at")
+  importResult     Json?            @map("import_result")
+  createdAt        DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime         @default(now()) @db.Timestamptz(6) @map("updated_at")
+  createdByAdmin   AdminUser        @relation(fields: [createdByAdminId], references: [id], onUpdate: NoAction)
+  withdrawals      Withdrawal[]
+
+  @@index([method, createdAt(sort: Desc)], map: "wb_method_idx")
+  @@map("withdrawal_batches")
+}
+
+model WithdrawalQuote {
+  id             String           @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId         String           @db.Uuid @map("user_id")
+  payoutMethodId String?          @db.Uuid @map("payout_method_id")
+  method         PayoutMethodType
+  amountUsd      Decimal          @db.Decimal(20, 6) @map("amount_usd")
+  feeUsd         Decimal          @db.Decimal(20, 6) @map("fee_usd")
+  payoutCurrency String           @db.Char(4) @map("payout_currency")
+  exchangeRateId String           @db.Uuid @map("exchange_rate_id")
+  fxRate         Decimal          @db.Decimal(20, 6) @map("fx_rate")
+  receiveAmount  Decimal          @db.Decimal(20, 6) @map("receive_amount")
+  expiresAt      DateTime         @db.Timestamptz(6) @map("expires_at")
+  consumedAt     DateTime?        @db.Timestamptz(6) @map("consumed_at")
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  exchangeRate   ExchangeRate     @relation(fields: [exchangeRateId], references: [id], onUpdate: NoAction)
+  payoutMethod   PayoutMethod?    @relation(fields: [payoutMethodId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  withdrawals    Withdrawal[]
+
+  @@index([expiresAt], map: "wq_expires_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "wq_user_idx")
+  @@map("withdrawal_quotes")
+}
+
+enum ActiveMode {
+  worker
+  employer
+
+  @@map("active_mode")
+}
+
+enum ActorType {
+  user
+  admin
+  system
+
+  @@map("actor_type")
+}
+
+enum AdminUserStatus {
+  active
+  disabled
+
+  @@map("admin_user_status")
+}
+
+enum AppealStatus {
+  open
+  under_review
+  upheld
+  denied
+
+  @@map("appeal_status")
+}
+
+enum CloseReason {
+  slots_filled
+  expired
+  employer_closed
+  admin_closed
+
+  @@map("close_reason")
+}
+
+enum ContactMessageStatus {
+  new
+  in_progress
+  answered
+  closed
+  spam
+
+  @@map("contact_message_status")
+}
+
+enum ContactTopic {
+  getting_started
+  tasks_proof
+  payments_withdrawals
+  employers
+  account_security
+  referral
+
+  @@map("contact_topic")
+}
+
+enum DecisionSource {
+  employer
+  auto
+  admin
+
+  @@map("decision_source")
+}
+
+enum DepositMethod {
+  crypto
+  mobile_wallet
+  card
+
+  @@map("deposit_method")
+}
+
+enum DepositStatus {
+  initiated
+  pending
+  completed
+  failed
+  cancelled
+  expired
+  refunded
+
+  @@map("deposit_status")
+}
+
+enum DisputeStatus {
+  open
+  under_review
+  resolved_worker
+  resolved_employer
+  withdrawn
+
+  @@map("dispute_status")
+}
+
+enum IdempotencyStatus {
+  in_progress
+  completed
+  failed
+
+  @@map("idempotency_status")
+}
+
+enum InterestDevice {
+  phone
+  desktop
+
+  @@map("interest_device")
+}
+
+enum InterestTime {
+  under_15
+  v15_60 @map("15_60")
+  over_60
+
+  @@map("interest_time")
+}
+
+enum JobEligibility {
+  all_verified
+  kyc_verified
+
+  @@map("job_eligibility")
+}
+
+enum JobReportReason {
+  scam_or_payment
+  personal_data
+  fake_engagement
+  broken_materials
+  misleading
+  other
+
+  @@map("job_report_reason")
+}
+
+enum JobReportStatus {
+  open
+  reviewed
+  actioned
+  dismissed
+
+  @@map("job_report_status")
+}
+
+enum JobStatus {
+  draft
+  running
+  paused
+  completed
+  cancelled
+  suspended
+
+  @@map("job_status")
+}
+
+enum KycDocumentType {
+  national_id
+  passport
+  driving_licence
+
+  @@map("kyc_document_type")
+}
+
+enum KycRejectionReason {
+  document_unreadable
+  name_mismatch
+  document_expired
+  selfie_mismatch
+  other
+
+  @@map("kyc_rejection_reason")
+}
+
+enum EmployerVerificationStatus {
+  not_submitted
+  pending
+  verified
+  rejected
+
+  @@map("employer_verification_status")
+}
+
+enum KycStatus {
+  not_submitted
+  pending
+  verified
+  rejected
+
+  @@map("kyc_status")
+}
+
+enum LedgerTxType {
+  deposit
+  job_reserve
+  job_spend
+  job_release
+  task_reward
+  referral_commission
+  withdrawal
+  withdrawal_reversal
+  platform_fee
+  deposit_refund
+  adjustment
+
+  @@map("ledger_tx_type")
+}
+
+enum LegalPageSlug {
+  terms
+  privacy
+  refund
+  cancellation
+
+  @@map("legal_page_slug")
+}
+
+enum NotificationCategory {
+  tasks
+  payments
+  referrals
+  system
+
+  @@map("notification_category")
+}
+
+enum NotificationPrefKey {
+  task_approved
+  submission_needs_fix
+  payout_updates
+  new_jobs_matching
+  referral_earnings
+  tips_product_news
+  new_submissions_digest
+  review_window_ending
+  low_deposit_balance
+  monthly_spending_report
+
+  @@map("notification_pref_key")
+}
+
+enum OtpChannel {
+  sms
+  email
+
+  @@map("otp_channel")
+}
+
+enum OtpPurpose {
+  signup
+  login
+  password_reset
+  new_device
+  first_withdrawal
+  contact_change
+
+  @@map("otp_purpose")
+}
+
+enum PauseReason {
+  employer
+  low_deposit
+  admin
+
+  @@map("pause_reason")
+}
+
+enum PayoutMethodType {
+  bkash
+  nagad
+  rocket
+  usdt_trc20
+
+  @@map("payout_method_type")
+}
+
+enum ProofType {
+  screenshot
+  link
+  text
+  file
+
+  @@map("proof_type")
+}
+
+enum ReferralCommissionStatus {
+  pending
+  credited
+  reversed
+  ineligible
+
+  @@map("referral_commission_status")
+}
+
+enum ReferralSourceType {
+  task
+  deposit
+
+  @@map("referral_source_type")
+}
+
+enum ReferralStatus {
+  not_started
+  active
+  ineligible
+
+  @@map("referral_status")
+}
+
+enum RejectionReasonCode {
+  proof_incomplete
+  steps_not_followed
+  wrong_or_copied
+  link_not_accessible
+  other
+
+  @@map("rejection_reason_code")
+}
+
+enum ReservationStatus {
+  active
+  submitted
+  released
+  expired
+  cancelled
+
+  @@map("reservation_status")
+}
+
+enum RestrictionKind {
+  restricted
+  suspended
+
+  @@map("restriction_kind")
+}
+
+enum SubmissionEventType {
+  job_opened
+  slot_reserved
+  steps_updated
+  draft_saved
+  slot_released
+  slot_expired
+  reservation_cancelled
+  submitted
+  resubmitted
+  approved
+  auto_approved
+  needs_fix
+  rejected
+  fix_window_expired
+  dispute_opened
+  dispute_resolved
+  escalated
+  paid_to_balance
+
+  @@map("submission_event_type")
+}
+
+enum SubmissionStatus {
+  in_review
+  approved
+  needs_fix
+  rejected
+
+  @@map("submission_status")
+}
+
+enum TimePerTask {
+  about_2
+  about_5
+  about_10
+  about_15
+  about_30
+  about_60
+
+  @@map("time_per_task")
+}
+
+enum UploadPurpose {
+  proof_screenshot
+  proof_file
+  kyc_document
+  kyc_selfie
+  avatar
+  employer_logo
+  cms_image
+
+  @@map("upload_purpose")
+}
+
+enum UploadStatus {
+  pending
+  uploaded
+  quarantined
+  deleted
+
+  @@map("upload_status")
+}
+
+enum UserStatus {
+  active
+  restricted
+  suspended
+  closed
+
+  @@map("user_status")
+}
+
+enum WalletAccountKind {
+  worker_earnings
+  employer_available
+  employer_reserved
+  payout_clearing
+  gateway_clearing
+  platform_revenue
+  referral_expense
+  adjustments
+  treasury
+  gateway_fees
+
+  @@map("wallet_account_kind")
+}
+
+enum WithdrawalStatus {
+  requested
+  processing
+  paid
+  rejected
+  cancelled
+  failed
+
+  @@map("withdrawal_status")
+}
+
+enum PayoutMethodStatus {
+  active
+  pending_review
+  disabled
+
+  @@map("payout_method_status")
+}

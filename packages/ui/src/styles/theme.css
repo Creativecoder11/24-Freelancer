@@ -1,0 +1,62 @@
+/* Tailwind v4 theme: maps utilities to the Figma tokens in tokens.css (Doc 02 §4.13, converted from Tailwind 3 config) */
+@theme inline {
+  --breakpoint-tablet: 768px; --breakpoint-laptop: 1024px; --breakpoint-desktop: 1280px; --breakpoint-wide: 1440px;
+
+  --color-canvas: var(--fl-bg-canvas); --color-surface: var(--fl-bg-surface); --color-subtle: var(--fl-bg-subtle); --color-muted: var(--fl-bg-muted);
+  --color-inverse: var(--fl-bg-inverse); --color-inverse-raised: var(--fl-bg-inverse-raised);
+  --color-brand: var(--fl-bg-brand); --color-brand-hover: var(--fl-bg-brand-hover); --color-brand-active: var(--fl-bg-brand-active);
+  --color-brand-subtle: var(--fl-bg-brand-subtle); --color-brand-muted: var(--fl-bg-brand-muted);
+  --color-brand-50: var(--fl-brand-50); --color-brand-100: var(--fl-brand-100); --color-brand-200: var(--fl-brand-200); --color-brand-300: var(--fl-brand-300); --color-brand-600: var(--fl-brand-600); --color-brand-700: var(--fl-brand-700);
+  --color-success: var(--fl-bg-success); --color-success-subtle: var(--fl-bg-success-subtle); --color-success-bright: var(--fl-bg-success-bright);
+  --color-warning: var(--fl-bg-warning); --color-warning-subtle: var(--fl-bg-warning-subtle);
+  --color-danger: var(--fl-bg-danger); --color-danger-hover: var(--fl-bg-danger-hover); --color-danger-subtle: var(--fl-bg-danger-subtle);
+  --color-info-subtle: var(--fl-bg-info-subtle); --color-accent-subtle: var(--fl-bg-accent-subtle);
+  --color-highlight: var(--fl-bg-highlight); --color-highlight-soft: var(--fl-bg-highlight-soft);
+
+  --color-fg: var(--fl-text-primary); --color-fg-secondary: var(--fl-text-secondary); --color-fg-tertiary: var(--fl-text-tertiary);
+  --color-fg-disabled: var(--fl-text-disabled); --color-fg-inverse: var(--fl-text-inverse); --color-fg-inverse-secondary: var(--fl-text-inverse-secondary);
+  --color-fg-brand: var(--fl-text-brand); --color-fg-brand-inverse: var(--fl-text-brand-inverse); --color-fg-on-brand: var(--fl-text-on-brand);
+  --color-fg-success: var(--fl-text-success); --color-fg-warning: var(--fl-text-warning); --color-fg-danger: var(--fl-text-danger);
+  --color-fg-info: var(--fl-text-info); --color-fg-accent: var(--fl-text-accent); --color-fg-money-bright: var(--fl-text-money-bright);
+
+  --color-line: var(--fl-border-default); --color-line-subtle: var(--fl-border-subtle); --color-line-strong: var(--fl-border-strong);
+  --color-line-brand: var(--fl-border-brand); --color-line-focus: var(--fl-border-focus); --color-line-danger: var(--fl-border-danger);
+  --color-line-success: var(--fl-border-success); --color-line-warning: var(--fl-border-warning); --color-line-inverse: var(--fl-border-inverse);
+  --color-line-marker: var(--fl-border-marker);
+  --color-scrim: var(--fl-scrim);
+
+  --font-display: var(--fl-font-display); --font-sans: var(--fl-font-sans); --font-hand: var(--fl-font-hand);
+
+  --text-display-2xl: 64px; --text-display-2xl--line-height: 72px; --text-display-2xl--letter-spacing: -1.92px; --text-display-2xl--font-weight: 800;
+  --text-display-xl: 52px; --text-display-xl--line-height: 60px; --text-display-xl--letter-spacing: -1.56px; --text-display-xl--font-weight: 800;
+  --text-h1: 40px; --text-h1--line-height: 48px; --text-h1--letter-spacing: -1px; --text-h1--font-weight: 700;
+  --text-h2: 32px; --text-h2--line-height: 40px; --text-h2--letter-spacing: -0.64px; --text-h2--font-weight: 700;
+  --text-h3: 24px; --text-h3--line-height: 32px; --text-h3--letter-spacing: -0.36px; --text-h3--font-weight: 600;
+  --text-h4: 20px; --text-h4--line-height: 28px; --text-h4--letter-spacing: -0.2px; --text-h4--font-weight: 600;
+  --text-h5: 16px; --text-h5--line-height: 24px; --text-h5--letter-spacing: -0.2px; --text-h5--font-weight: 600;
+  --text-body-lg: 18px; --text-body-lg--line-height: 28px; --text-body-lg--letter-spacing: -0.2px;
+  --text-body-md: 16px; --text-body-md--line-height: 24px; --text-body-md--letter-spacing: -0.1px;
+  --text-body-sm: 14px; --text-body-sm--line-height: 20px;
+  --text-body-xs: 12px; --text-body-xs--line-height: 16px;
+  --text-label-lg: 16px; --text-label-lg--line-height: 24px; --text-label-lg--letter-spacing: -0.1px; --text-label-lg--font-weight: 600;
+  --text-label-md: 14px; --text-label-md--line-height: 20px; --text-label-md--font-weight: 600;
+  --text-label-sm: 12px; --text-label-sm--line-height: 16px; --text-label-sm--font-weight: 500;
+  --text-overline: 12px; --text-overline--line-height: 16px; --text-overline--letter-spacing: 0.96px; --text-overline--font-weight: 600;
+  --text-num-2xl: 40px; --text-num-2xl--line-height: 48px; --text-num-2xl--letter-spacing: -0.8px; --text-num-2xl--font-weight: 700;
+  --text-num-xl: 32px; --text-num-xl--line-height: 40px; --text-num-xl--letter-spacing: -0.64px; --text-num-xl--font-weight: 700;
+  --text-num-lg: 24px; --text-num-lg--line-height: 32px; --text-num-lg--letter-spacing: -0.36px; --text-num-lg--font-weight: 600;
+  --text-num-md: 18px; --text-num-md--line-height: 24px; --text-num-md--letter-spacing: -0.18px; --text-num-md--font-weight: 600;
+  --text-num-sm: 14px; --text-num-sm--line-height: 20px; --text-num-sm--font-weight: 600;
+  --text-hand-note: 24px; --text-hand-note--line-height: 28px; --text-hand-note--font-weight: 700;
+  --text-hand-sm: 19px; --text-hand-sm--line-height: 22px; --text-hand-sm--font-weight: 700;
+
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-card: 16px; --radius-xl: 20px; --radius-2xl: 28px; --radius-full: 999px;
+
+  --shadow-xs: var(--fl-shadow-xs); --shadow-sm: var(--fl-shadow-sm); --shadow-md: var(--fl-shadow-md); --shadow-lg: var(--fl-shadow-lg);
+  --shadow-xl: var(--fl-shadow-xl); --shadow-focus: var(--fl-shadow-focus); --shadow-focus-inverse: var(--fl-shadow-focus-inverse);
+
+  --container-container: 1200px; --container-content: 1104px; --container-dialog: 480px;
+  --ease-out-fl: cubic-bezier(0.2,0,0,1);
+  --animate-shimmer: shimmer 1.2s linear infinite;
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+}

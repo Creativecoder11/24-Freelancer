@@ -1,0 +1,40 @@
+{
+  "name": "24freelancing",
+  "private": true,
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @24f/db exec prisma generate",
+    "db:migrate:dev": "pnpm --filter @24f/db exec prisma migrate dev",
+    "db:migrate:deploy": "pnpm --filter @24f/db exec prisma migrate deploy",
+    "db:seed": "pnpm --filter @24f/db run seed:base",
+    "db:seed:demo": "pnpm --filter @24f/db run seed:demo",
+    "db:studio": "pnpm --filter @24f/db exec prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.6.3",
+    "prettier": "^3.3.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "argon2",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "@nestjs/core",
+      "sharp",
+      "esbuild",
+      "unrs-resolver",
+      "msgpackr-extract",
+      "@tailwindcss/oxide"
+    ]
+  }
+}
