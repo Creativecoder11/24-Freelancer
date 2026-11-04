@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@24f/ui/src/styles/tokens.css";
+@import "@24f/ui/src/styles/theme.css";
+
+@source "../../../../packages/ui/src";
+
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { background: var(--fl-bg-canvas); color: var(--fl-text-primary); }
+:focus-visible { outline: none; box-shadow: var(--fl-shadow-focus); }
+
+/* Admin tables: numeric columns use tabular figures; long values wrap politely. */
+.adm-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.adm-scroll { scrollbar-width: thin; }
+
+/* Motion bootstrapping: elements hide only when JS + motion are available. */
+.motion [data-reveal-item] { opacity: 0; }
+.motion:not(.motion-ready) [data-reveal-item] { animation: fl-reveal-fallback 0.3s 2s forwards; }
+@keyframes fl-reveal-fallback { to { opacity: 1; } }
+
+/* KYC watermark (Doc 09 §8.2). */
+.adm-watermark { pointer-events: none; position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.35); font-weight: 600; font-size: 14px; transform: rotate(-24deg); text-shadow: 0 1px 2px rgba(0,0,0,.4); }

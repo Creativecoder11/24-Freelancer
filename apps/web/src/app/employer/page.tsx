@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { SignedInPlaceholder } from '@/components/auth/SignedInPlaceholder';
+import { Overview } from '@/components/employer/Overview';
 
-export const metadata: Metadata = { title: 'Employer', robots: { index: false } };
+export const metadata: Metadata = { title: 'Overview' };
 
-/** TEMPORARY: replaced by the employer dashboard. */
+/** SCR-EMP-01 (Figma 32:477). */
 export default function Page() {
-  return <SignedInPlaceholder mode="employer" />;
+  return <Overview />;
 }

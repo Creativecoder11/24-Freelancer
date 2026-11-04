@@ -1,10 +1,12 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@24f/db';
 import Decimal from 'decimal.js';
-import { formatReward, maskName } from '@24f/shared';
+import { formatReward } from '@24f/shared';
 import { ApiError } from '../../common/api-error';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ReferralCreditService } from '../employer/referral-credit';
 import { EmployerCore, dec, shortTitle, unitCost, usd3, usd6 } from '../employer/employer-common';
 
 export type DecisionSource = 'employer' | 'auto' | 'admin';
@@ -41,6 +43,7 @@ export class ApprovalService {
   constructor(
     private readonly core: EmployerCore,
     private readonly settings: SettingsService,
+    private readonly referrals: ReferralCreditService,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
@@ -178,59 +181,27 @@ export class ApprovalService {
    * Task referral commission (Doc 08 §9): 5% of the reward from `referral_expense` to the
    * referrer's `worker_earnings`, idempotent on `referral:task:{submission_id}`.
    */
-  async creditReferral(o: ApprovalOutcome) {
-    if (!(await this.settings.get<boolean>('referral_enabled', true))) return;
-    const referral = await this.db.referral.findUnique({ where: { referredUserId: o.workerUserId } });
-    if (!referral || referral.status === 'ineligible') return;
-    const rate = new Decimal(String(await this.settings.get('referral_task_rate', '0.05')));
-    const amount = o.rewardUsd.mul(rate).toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
-    if (amount.lte(0)) return;
-    const key = `referral:task:${o.submissionId}`;
-    const exists = await this.db.ledgerTransaction.findUnique({ where: { idempotencyKey: key }, select: { id: true } });
-    if (exists) return;
-    const friend = await this.db.user.findUnique({ where: { id: o.workerUserId }, select: { fullName: true } });
-    const masked = maskName(friend?.fullName);
-    await this.db.$transaction(async (tx) => {
-      const commission = await tx.referralCommission.create({
-        data: {
-          referralId: referral.id,
-          referrerUserId: referral.referrerUserId,
-          referredUserId: o.workerUserId,
-          sourceType: 'task',
-          submissionId: o.submissionId,
-          baseAmount: new Prisma.Decimal(o.rewardUsd.toFixed(6)),
-          rate: new Prisma.Decimal(rate.toFixed(6)),
-          amount: new Prisma.Decimal(amount.toFixed(6)),
-          status: 'credited',
-          creditedAt: new Date(),
-        },
-      });
-      const expense = await this.core.ledger.systemAccount('referral_expense', tx);
-      const earnings = await this.core.ledger.userAccount(referral.referrerUserId, 'worker_earnings', tx);
-      const t = await this.core.ledger.post(
-        {
-          type: 'referral_commission',
-          idempotencyKey: key,
-          description: { friend: masked, source: 'task' },
-          refs: { submissionId: o.submissionId, referralCommissionId: commission.id },
-          lines: [
-            { accountId: expense.id, amount: amount.neg().toFixed(6) },
-            { accountId: earnings.id, amount: amount.toFixed(6) },
-          ],
-        },
-        tx,
-      );
-      await tx.referralCommission.update({ where: { id: commission.id }, data: { ledgerTxId: t.id } });
-      await tx.referral.update({
-        where: { id: referral.id },
-        data: {
-          status: 'active',
-          activatedAt: referral.activatedAt ?? new Date(),
-          eligibleAt: referral.eligibleAt ?? new Date(),
-          lastActivityAt: new Date(),
-        },
-      });
-    });
+  async creditReferral(o: Pick<ApprovalOutcome, 'submissionId' | 'workerUserId' | 'rewardUsd'>) {
+    return this.referrals.credit({ source: 'task', friendUserId: o.workerUserId, baseUsd: o.rewardUsd, submissionId: o.submissionId });
+  }
+
+  /**
+   * Safety net for the after-commit step (Doc 08 §9.4 "runs in a separate job"): approved tasks
+   * from the last 7 days by referred workers that have no commission row yet get credited now.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES, { name: 'referrals.task-sweep' })
+  async referralSweep() {
+    const since = new Date(Date.now() - 7 * 86_400_000);
+    const rows = await this.db.$queryRaw<{ id: string; worker_user_id: string; reward_usd: Prisma.Decimal }[]>`
+      SELECT s.id, s.worker_user_id, s.reward_usd FROM submissions s
+      JOIN referrals r ON r.referred_user_id = s.worker_user_id
+      LEFT JOIN referral_commissions c ON c.submission_id = s.id
+      WHERE s.status = 'approved' AND s.decided_at >= ${since} AND c.id IS NULL
+      LIMIT 200`;
+    for (const r of rows) {
+      await this.creditReferral({ submissionId: r.id, workerUserId: r.worker_user_id, rewardUsd: dec(r.reward_usd) }).catch((e) => this.log.error(`referral sweep ${r.id}: ${String(e)}`));
+    }
+    return rows.length;
   }
 
   /** Employer entry point (Doc 04 §6.9). */

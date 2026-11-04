@@ -6,7 +6,6 @@ import { Icon, type IconName } from '../utils/icons';
 import { Spinner } from './Spinner';
 import type { ControlSize } from '../types';
 
-export { buttonClasses, type ButtonVariant } from './button-classes';
 import { buttonClasses, type ButtonVariant } from './button-classes';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

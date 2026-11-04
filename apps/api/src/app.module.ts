@@ -28,9 +28,19 @@ import { ReservationsModule } from './modules/reservations/reservations.module';
 import { WorkerModule } from './modules/worker/worker.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { DisputesModule } from './modules/disputes/disputes.module';
+// Admin panel API (/api/v1/admin/*)
+import { AdminModule } from './modules/admin/admin.module';
+
+// Worker wallet, withdrawals, KYC, referral, settings account endpoints
+import { FxModule } from './modules/fx/fx.service';
+import { PayoutMethodsModule } from './modules/payout-methods/payout-methods.module';
+import { WorkerWalletModule } from './modules/worker-wallet/worker-wallet.module';
+import { WithdrawalsModule } from './modules/withdrawals/withdrawals.module';
+import { KycModule } from './modules/kyc/kyc.module';
+import { ReferralModule } from './modules/referral/referral.module';
 
 @Module({
-  imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]), PrismaModule, SettingsModule, LedgerModule, PublicModule, RedisModule, AuthModule, MeModule, EmployerCoreModule, EmployerModule, JobsModule, ReviewModule, EmployerWalletModule, DepositsModule, ScheduleModule.forRoot(), NotificationsModule, UploadsModule, ReservationsModule, WorkerModule, SubmissionsModule, DisputesModule],
+  imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]), PrismaModule, SettingsModule, LedgerModule, PublicModule, RedisModule, AuthModule, MeModule, EmployerCoreModule, EmployerModule, JobsModule, ReviewModule, EmployerWalletModule, DepositsModule, ScheduleModule.forRoot(), NotificationsModule, UploadsModule, ReservationsModule, WorkerModule, SubmissionsModule, DisputesModule, FxModule, PayoutMethodsModule, WorkerWalletModule, WithdrawalsModule, KycModule, ReferralModule, AdminModule],
   controllers: [HealthController],
   providers: [
     { provide: APP_FILTER, useClass: ErrorFilter },

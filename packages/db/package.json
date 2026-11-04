@@ -10,7 +10,8 @@
     "seed:base": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/seed-base.sql",
     "seed:demo": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-fixture.sql",
     "seed:demo-jobs": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-jobs.sql",
-    "seed:demo-content": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-content.sql"
+    "seed:demo-content": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-content.sql",
+    "seed:demo-reserves": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f sql/demo-reserves.sql"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0"

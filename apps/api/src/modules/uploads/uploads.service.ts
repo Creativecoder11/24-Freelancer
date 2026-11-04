@@ -219,6 +219,9 @@ export class UploadsService {
     const isKyc = KYC.has(u.purpose);
     const reason = status === 'quarantined' ? ((await this.redis.client.get(`upload:reject:${u.id}`).catch(() => null)) ?? 'type_mismatch') : null;
     const image = UPLOAD_RULES[u.purpose as UploadPurpose].image;
+    // Only sign URLs for objects that really exist (seeded rows can point at missing files; a signed
+    // URL to a 404 shows as a broken image and a console error in the app).
+    const present = status === 'uploaded' && !isKyc ? !!(await this.storage.head(u.storageBucket, this.keyOf(u)).catch(() => null)) : false;
     return {
       upload_id: u.id,
       purpose: u.purpose as UploadPurpose,
@@ -228,8 +231,8 @@ export class UploadsService {
       mime_type: u.mimeType,
       width_px: u.widthPx,
       height_px: u.heightPx,
-      thumbnail_url: status === 'uploaded' && image && !isKyc ? this.signedUrl(u.id, 'thumb') : null,
-      url: status === 'uploaded' && !isKyc ? this.signedUrl(u.id, 'full') : null,
+      thumbnail_url: present && image ? this.signedUrl(u.id, 'thumb') : null,
+      url: present ? this.signedUrl(u.id, 'full') : null,
       rejection_reason: reason,
     };
   }

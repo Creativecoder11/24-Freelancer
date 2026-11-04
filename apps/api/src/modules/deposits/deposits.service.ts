@@ -7,6 +7,7 @@ import { Paged } from '../../common/envelope.interceptor';
 import { RedisService } from '../../common/redis.service';
 import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, dec, usd2 } from '../employer/employer-common';
+import { ReferralCreditService } from '../employer/referral-credit';
 import { EmployerWalletService, METHOD_LABEL } from '../employer-wallet/employer-wallet.service';
 import { JobsService } from '../jobs/jobs.service';
 import { MockPaymentProvider, canonicalJson, mockSign, type PaymentProviderAdapter } from './payment-provider';
@@ -32,6 +33,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
     private readonly wallet: EmployerWalletService,
     private readonly jobs: JobsService,
     private readonly redis: RedisService,
+    private readonly referrals: ReferralCreditService,
   ) {
     this.mock = new MockPaymentProvider(redis);
     if (paymentsMockEnabled()) this.adapters.set('mock', this.mock);
@@ -200,7 +202,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       event = await this.db.paymentWebhookEvent.create({
         data: {
           provider,
-          direction: 'in',
+          direction: 'payments',
           providerEventId: eventId,
           eventType: typeof body.event_type === 'string' ? body.event_type : null,
           signatureValid: valid,
@@ -316,51 +318,8 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
 
   /** BR-071: 5% of a referred employer's completed deposit to the referrer (Doc 08 §9). */
   private async depositCommission(depositId: string) {
-    if (!(await this.settings.get<boolean>('referral_enabled', true))) return;
-    const d = await this.db.deposit.findUniqueOrThrow({ where: { id: depositId }, include: { employerUser: { select: { fullName: true } } } });
-    const referral = await this.db.referral.findUnique({ where: { referredUserId: d.employerUserId } });
-    if (!referral || referral.status === 'ineligible') return;
-    const key = `referral:deposit:${d.id}`;
-    if (await this.db.ledgerTransaction.findUnique({ where: { idempotencyKey: key }, select: { id: true } })) return;
-    const rate = new Decimal(String(await this.settings.get('referral_deposit_rate', '0.05')));
-    const base = dec(d.creditedAmountUsd ?? d.amountUsd);
-    const amount = base.mul(rate).toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
-    if (amount.lte(0)) return;
-    const first = (d.employerUser.fullName ?? '').split(/\s+/)[0] ?? '';
-    const masked = first.length >= 3 ? `${first.slice(0, 2)}***${first.slice(-1)}` : `${first.slice(0, 1)}***`;
-    await this.db.$transaction(async (tx) => {
-      const c = await tx.referralCommission.create({
-        data: {
-          referralId: referral.id,
-          referrerUserId: referral.referrerUserId,
-          referredUserId: d.employerUserId,
-          sourceType: 'deposit',
-          depositId: d.id,
-          baseAmount: new Prisma.Decimal(base.toFixed(6)),
-          rate: new Prisma.Decimal(rate.toFixed(6)),
-          amount: new Prisma.Decimal(amount.toFixed(6)),
-          status: 'credited',
-          creditedAt: new Date(),
-        },
-      });
-      const expense = await this.core.ledger.systemAccount('referral_expense', tx);
-      const earnings = await this.core.ledger.userAccount(referral.referrerUserId, 'worker_earnings', tx);
-      const t = await this.core.ledger.post(
-        {
-          type: 'referral_commission',
-          idempotencyKey: key,
-          description: { friend: masked, source: 'deposit' },
-          refs: { depositId: d.id, referralCommissionId: c.id },
-          lines: [
-            { accountId: expense.id, amount: amount.neg().toFixed(6) },
-            { accountId: earnings.id, amount: amount.toFixed(6) },
-          ],
-        },
-        tx,
-      );
-      await tx.referralCommission.update({ where: { id: c.id }, data: { ledgerTxId: t.id } });
-      await tx.referral.update({ where: { id: referral.id }, data: { status: 'active', activatedAt: referral.activatedAt ?? new Date(), eligibleAt: referral.eligibleAt ?? new Date(), lastActivityAt: new Date() } });
-    });
+    const d = await this.db.deposit.findUniqueOrThrow({ where: { id: depositId } });
+    await this.referrals.credit({ source: 'deposit', friendUserId: d.employerUserId, baseUsd: dec(d.creditedAmountUsd ?? d.amountUsd).toFixed(6), depositId: d.id });
   }
 
   /** BR-017: low-deposit paused jobs resume oldest first while funds cover them. */

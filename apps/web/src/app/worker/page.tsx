@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { SignedInPlaceholder } from '@/components/auth/SignedInPlaceholder';
+import { OverviewPage } from '@/components/worker/overview/OverviewPage';
 
-export const metadata: Metadata = { title: 'Worker', robots: { index: false } };
+export const metadata: Metadata = { title: 'Overview' };
 
-/** TEMPORARY: replaced by the worker dashboard. */
+/** SCR-WRK-01 Worker overview. */
 export default function Page() {
-  return <SignedInPlaceholder mode="worker" />;
+  return <OverviewPage />;
 }

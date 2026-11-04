@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma } from '@24f/db';
 import { initials, maskName } from '@24f/shared';
 import { ApiError } from '../../common/api-error';
@@ -8,6 +8,7 @@ import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, unitCost, usd3 } from '../employer/employer-common';
 import { proofLabel } from '../jobs/job-rules';
 import { ApprovalService } from './approval.service';
+import { UploadsService } from '../uploads/uploads.service';
 
 const REASON_LABEL: Record<string, string> = {
   proof_incomplete: 'Proof incomplete',
@@ -43,6 +44,7 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
     private readonly approval: ApprovalService,
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
+    @Optional() private readonly uploads?: UploadsService,
   ) {}
 
   private get db() {
@@ -179,8 +181,9 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
           file: p.upload
             ? {
                 id: p.upload.id,
-                url: null as string | null,
-                thumbnail_url: null as string | null,
+                // Short-lived signed URLs (Doc 11 §6.7); proof images render straight from <img>.
+                url: this.fileUrl(p.upload, 'full'),
+                thumbnail_url: p.upload.mimeType?.startsWith('image/') ? this.fileUrl(p.upload, 'thumb') : null,
                 filename: p.upload.originalFilename,
                 size_bytes: p.upload.sizeBytes,
                 mime_type: p.upload.mimeType,
@@ -192,7 +195,19 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
     const maxResub = await this.settings.number('max_resubmissions', 1);
     const canFix = s.job.allowResubmission && s.resubmissionCount < maxResub && (!s.job.endsAt || s.job.endsAt > new Date());
     const ac = (s.autoCheck ?? null) as Record<string, unknown> | null;
-    const autoCheck = ac
+    // The worker submit flow stores `{ state: 'pass'|'warn'|'pending', items: [{ key, pass, text }] }`;
+    // older rows use flat flags. Both map onto one response shape.
+    const listed = ac && Array.isArray(ac.items) ? (ac.items as { key?: string; pass?: boolean; text?: string }[]) : null;
+    const autoCheck = listed
+      ? (() => {
+          const raw = String(ac!.state ?? '');
+          const state = raw === 'pending' ? 'pending' : raw === 'pass' || raw === 'passed' || listed.every((i) => i.pass) ? 'passed' : 'warning';
+          const items = listed.map((i) => ({ check: String(i.key ?? ''), result: i.pass ? 'pass' : 'warn' }));
+          const text = listed.map((i) => i.text ?? '').filter(Boolean).join(' · ');
+          const summary = state === 'pending' ? 'Checking proof…' : text ? text.charAt(0).toUpperCase() + text.slice(1) : state === 'passed' ? 'Checks passed' : 'Check this proof before you decide';
+          return { state, summary, items };
+        })()
+      : ac
       ? (() => {
           const items: { check: string; result: string }[] = [];
           if ('link_ok' in ac) items.push({ check: 'link_opens', result: ac.link_ok ? 'pass' : 'warn' });
@@ -265,6 +280,15 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
         : null,
       dispute: s.dispute ? { ref: s.dispute.publicRef, status: s.dispute.status, opened_at: s.dispute.openedAt?.toISOString?.() ?? null } : null,
     };
+  }
+
+  private fileUrl(u: { id: string; deletedAt: Date | null; status: string }, v: 'full' | 'thumb'): string | null {
+    if (!this.uploads || u.deletedAt || u.status !== 'uploaded') return null;
+    try {
+      return this.uploads.signedUrl(u.id, v);
+    } catch {
+      return null;
+    }
   }
 
   /** After a decision: next item in the same queue, and the sidebar badge (FR-REV-005). */

@@ -6,6 +6,7 @@ import { AllowStatus, AuthModule, CurrentUser, JwtAuthGuard } from '../auth/auth
 import { NotificationsModule } from '../notifications/notifications.module';
 import { requireIdemKey, usd3 } from '../employer/employer-common';
 import { ApprovalService } from './approval.service';
+import { ReferralCreditService } from '../employer/referral-credit';
 import { ReviewService } from './review.service';
 
 const listQuery = z.object({
@@ -88,7 +89,7 @@ export class ReviewController {
 @Module({
   imports: [AuthModule, NotificationsModule],
   controllers: [ReviewController],
-  providers: [ReviewService, ApprovalService],
+  providers: [ReviewService, ApprovalService, ReferralCreditService],
   exports: [ApprovalService],
 })
 export class ReviewModule {}

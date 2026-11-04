@@ -21,6 +21,7 @@ import { PasswordService } from '../auth/password.service';
 import { SessionService } from '../auth/session.service';
 import { nextPathFor, overviewPath, ProfilesService } from '../auth/profiles.service';
 import type { AuthUser } from '../auth/jwt-auth.guard';
+import { UploadsService } from '../uploads/uploads.service';
 
 const toDbTime = (v: string | null | undefined): DbInterestTime | null | undefined =>
   v === undefined ? undefined : v === null ? null : ((v === '15_60' ? 'v15_60' : v) as DbInterestTime);
@@ -36,6 +37,7 @@ export class MeService {
     private readonly passwords: PasswordService,
     private readonly sessions: SessionService,
     private readonly profiles: ProfilesService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private async user(id: string) {
@@ -79,7 +81,7 @@ export class MeService {
       full_name: u.fullName ?? '',
       name_masked: maskName(u.fullName),
       initials: initials(u.fullName),
-      avatar_url: null,
+      avatar_url: u.avatarUploadId ? this.uploads.signedUrl(u.avatarUploadId, 'full') : null,
       email: u.email,
       email_verified_at: iso(u.emailVerifiedAt),
       phone_masked: u.phoneE164 ? maskPhoneAuth(u.phoneE164) : null,

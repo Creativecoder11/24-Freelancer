@@ -9,6 +9,7 @@ import { requireIdemKey } from '../employer/employer-common';
 import { EmployerWalletModule } from '../employer-wallet/employer-wallet.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { DepositsService } from './deposits.service';
+import { ReferralCreditService } from '../employer/referral-credit';
 
 const createBody = z.object({
   method: z.enum(['crypto', 'mobile_wallet', 'card'], { errorMap: () => ({ message: 'Choose a payment method.' }) }),
@@ -78,6 +79,6 @@ export class MockGatewayController {
 @Module({
   imports: [AuthModule, EmployerWalletModule, JobsModule],
   controllers: [DepositsController, PaymentWebhooksController, MockGatewayController],
-  providers: [DepositsService],
+  providers: [DepositsService, ReferralCreditService],
 })
 export class DepositsModule {}
