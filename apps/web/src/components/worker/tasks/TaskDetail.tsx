@@ -5,6 +5,7 @@
  * `needs_fix` redirects to SCR-WRK-08.
  */
 import { useEffect, useState } from 'react';
+import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ProofItemView, WorkerSubmissionDetail } from '@24f/shared';
@@ -231,9 +232,9 @@ function TaskView({ t, now }: { t: WorkerSubmissionDetail; now: number }) {
           <h3 className="text-label-lg text-fg">Something wrong?</h3>
           <p className="mt-1 text-body-sm text-fg-secondary">If the job changed after you submitted, or you think the review is unfair, we can help.</p>
           <div className="mt-4 flex items-center gap-8">
-            <a href="/help#live-support" className="text-label-md text-fg-brand hover:underline">
+            <NextLink href="/help#live-support" className="text-label-md text-fg-brand hover:underline">
               Live support
-            </a>
+            </NextLink>
             <LinkButton onClick={() => setReport(true)} className="!text-fg-secondary">
               Report job
             </LinkButton>

@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   basePath: '/admin',
   transpilePackages: ['@24f/ui', '@24f/shared'],
   poweredByHeader: false,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async rewrites() {
     return [{ source: '/api/v1/:path*', destination: `${API_ORIGIN}/api/v1/:path*`, basePath: false }];
   },

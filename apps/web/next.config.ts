@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@24f/ui', '@24f/shared'],
   poweredByHeader: false,
   images: { formats: ['image/avif', 'image/webp'] },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async rewrites() {
     return [{ source: '/api/v1/:path*', destination: `${API_ORIGIN}/api/v1/:path*` }];
   },

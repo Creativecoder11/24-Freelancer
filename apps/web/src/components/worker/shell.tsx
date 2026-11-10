@@ -8,6 +8,7 @@
  * resolved here so the topbar is right on the first paint.
  */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import NextLink from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Me } from '@24f/shared';
@@ -103,9 +104,9 @@ function RestrictedBanner() {
       <p className="text-label-md text-fg-warning">Your account is restricted</p>
       <p className="mt-0.5">
         You can sign in, but you can’t start jobs, publish or withdraw right now. Contact support to appeal.{' '}
-        <a href="/help#live-support" className="font-semibold text-fg-brand hover:underline">
+        <NextLink href="/help#live-support" className="font-semibold text-fg-brand hover:underline">
           Contact support
-        </a>
+        </NextLink>
       </p>
     </div>
   );
