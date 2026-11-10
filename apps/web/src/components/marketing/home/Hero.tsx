@@ -56,7 +56,7 @@ export function Hero({ heroJob }: { heroJob?: JobCardData }) {
   return (
     <section ref={scope} className="mx-auto grid max-w-container gap-12 px-5 pb-16 pt-10 tablet:px-8 desktop:grid-cols-[560px_600px] desktop:justify-between desktop:gap-10 desktop:px-0 desktop:pb-12 desktop:pt-[72px]">
       <div data-hero className="relative desktop:pt-10">
-        <p className="hero-eyebrow font-hand text-hand-note text-fg-brand">small tasks, honest pay — that’s the whole idea</p>
+        <p className="hero-eyebrow font-hand text-hand-note text-fg-brand">small and tasks, honest pay — that’s the whole idea</p>
         <h1 className="mt-3 font-display text-[44px] font-extrabold leading-[52px] tracking-[-1.3px] text-fg tablet:text-display-xl desktop:text-display-2xl">
           {[['Turn', 'spare', 'minutes'], ['into', 'verified']].map((line, li) => (
             <span key={li} className="desktop:block">
