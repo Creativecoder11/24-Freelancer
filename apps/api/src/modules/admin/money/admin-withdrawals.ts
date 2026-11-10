@@ -53,6 +53,8 @@ export class AdminWithdrawalsService {
   }
 
   private async needsSecond(w: { id: string; userId: string; amountUsd: Prisma.Decimal }) {
+    const dualEnabled = await this.settings.get<boolean>('payout_dual_approval_enabled', false);
+    if (!dualEnabled) return false;
     const threshold = new Decimal(String(await this.settings.get('payout_dual_approval_threshold_usd', '100.00')));
     return dec(w.amountUsd).gte(threshold) || (await this.isFirst(w.userId, w.id));
   }

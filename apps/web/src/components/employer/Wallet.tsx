@@ -51,6 +51,9 @@ function Body({ w }: { w: WalletSummary }) {
   const initial = prefill && /^\d+(\.\d{1,2})?$/.test(prefill) ? Math.max(Number(prefill), Number(af.min_usd)).toFixed(2) : af.default_amount_usd;
   const [amount, setAmount] = useState(initial);
   const [other, setOther] = useState(af.presets_usd.includes(initial) ? '' : initial);
+  const [senderNumber, setSenderNumber] = useState('');
+  const [trxId, setTrxId] = useState('');
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const root = useStaggerIn<HTMLDivElement>([], { selector: '[data-stagger]' });
 
@@ -64,6 +67,10 @@ function Body({ w }: { w: WalletSummary }) {
   const validate = () => {
     if (!amount || !/^\d+(\.\d{1,2})?$/.test(amount) || !Number.isFinite(n)) return 'Enter an amount in dollars, like 25.00.';
     if (n < min || n > max) return `Enter between ${formatMoney(af.min_usd)} and ${formatMoney(max.toFixed(2))}.`;
+    if (method === 'mobile_wallet') {
+      if (!senderNumber.trim()) return 'Enter your sender bKash number.';
+      if (!trxId.trim() || trxId.trim().length < 8) return 'Enter a valid bKash TrxID (8 to 12 letters and numbers).';
+    }
     return null;
   };
 
@@ -76,7 +83,14 @@ function Body({ w }: { w: WalletSummary }) {
     mutationFn: () =>
       api.post<{ ref: string; checkout_url: string }>(
         '/deposits',
-        { method, sub_provider: method === 'mobile_wallet' ? (sub ?? undefined) : undefined, amount_usd: n.toFixed(2), return_to: returnTo ?? undefined },
+        {
+          method,
+          sub_provider: method === 'mobile_wallet' ? (sub ?? undefined) : undefined,
+          amount_usd: n.toFixed(2),
+          return_to: returnTo ?? undefined,
+          sender_number: method === 'mobile_wallet' ? senderNumber.trim() : undefined,
+          trx_id: method === 'mobile_wallet' ? trxId.trim().toUpperCase() : undefined,
+        },
         { headers: { 'Idempotency-Key': idemKey() } },
       ),
     onSuccess: (r) => {
@@ -266,6 +280,60 @@ function Body({ w }: { w: WalletSummary }) {
               )}
             </fieldset>
 
+            {method === 'mobile_wallet' ? (
+              <div className="space-y-4 rounded-[14px] border border-line-brand/40 bg-brand-subtle/30 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-label-md font-semibold text-fg">
+                    bKash Number ({af.manual_bkash?.account_type ?? 'Personal · Send Money'})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(af.manual_bkash?.number ?? '01700000000');
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="flex items-center gap-1.5 rounded-[8px] bg-brand px-3 py-1.5 text-label-sm font-medium text-fg-inverse hover:opacity-90 transition-opacity"
+                  >
+                    <Icon name="copy" size={14} />
+                    {copied ? 'Copied!' : 'Copy Number'}
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between rounded-[10px] bg-surface p-3 font-mono text-h4 font-bold tracking-wider text-fg border border-line">
+                  <span>{af.manual_bkash?.number ?? '01700000000'}</span>
+                  <span className="text-body-xs font-normal text-fg-secondary">
+                    Total: ৳{Math.ceil(n * Number(cfg?.deposit_fx_rate ?? af.manual_bkash?.deposit_fx_rate ?? '121.50') || 0).toLocaleString('en-US')}
+                  </span>
+                </div>
+                <p className="text-body-xs text-fg-secondary">
+                  {af.manual_bkash?.instructions ?? 'Send money to our bKash personal number, then enter your sender number and TrxID below.'}
+                </p>
+
+                <div className="grid gap-3 tablet:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-label-sm text-fg">Your bKash Number (Sender)</span>
+                    <input
+                      type="text"
+                      placeholder="01XXXXXXXXX"
+                      value={senderNumber}
+                      onChange={(e) => setSenderNumber(e.target.value)}
+                      className="h-11 w-full rounded-[10px] border border-line bg-surface px-3 text-body-sm outline-none focus:border-line-brand focus:shadow-focus"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-label-sm text-fg">bKash TrxID</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. BL48X9K2"
+                      value={trxId}
+                      onChange={(e) => setTrxId(e.target.value.toUpperCase())}
+                      className="h-11 w-full rounded-[10px] border border-line bg-surface px-3 font-mono text-body-sm uppercase outline-none focus:border-line-brand focus:shadow-focus"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
             <dl className="rounded-[14px] bg-subtle px-5 py-4 text-body-sm">
               <div className="flex justify-between gap-3 py-1.5">
                 <dt className="text-fg-secondary">Deposit</dt>
@@ -296,8 +364,8 @@ function Body({ w }: { w: WalletSummary }) {
               for exceptions. You’re redirected to the provider to pay securely.
             </p>
 
-            <Button type="submit" size="L" fullWidth loading={start.isPending} loadingText="Redirecting…" disabled={paused} disabledReasonId="dep-paused">
-              Continue to payment · {Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}
+            <Button type="submit" size="L" fullWidth loading={start.isPending} loadingText={method === 'mobile_wallet' ? 'Submitting…' : 'Redirecting…'} disabled={paused} disabledReasonId="dep-paused">
+              {method === 'mobile_wallet' ? `Submit bKash Deposit · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}` : `Continue to payment · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}`}
             </Button>
             <span id="dep-paused" className="sr-only">
               Deposits are paused.

@@ -98,7 +98,13 @@ export class EmployerWalletService {
     });
     const last = await this.db.deposit.findFirst({ where: { employerUserId: userId, status: 'completed' }, orderBy: { completedAt: 'desc' }, select: { method: true } });
     const order = ['crypto', 'mobile_wallet', 'card'].filter((m) => enabled.includes(m));
-    const defaultMethod = last && enabled.includes(last.method) ? last.method : enabled.includes('crypto') ? 'crypto' : (order[0] ?? null);
+    const defaultMethod = last && enabled.includes(last.method) ? last.method : enabled.includes('mobile_wallet') ? 'mobile_wallet' : (order[0] ?? null);
+
+    const bkashManualNumber = await this.settings.get<string>('bkash_manual_number', '01700000000');
+    const bkashAccountType = await this.settings.get<string>('bkash_manual_account_type', 'Personal (Send Money)');
+    const bkashInstructions = await this.settings.get<string>('bkash_manual_instructions', 'Send money to our bKash personal number with your User ID as reference, then enter your sender bKash number and TrxID below.');
+    const bkashManualEnabled = await this.settings.get<boolean>('bkash_manual_enabled', true);
+
     return {
       methods: order.map((m) => ({
         method: m,
@@ -116,6 +122,13 @@ export class EmployerWalletService {
       remaining_daily_usd: Decimal.max(0, daily.minus(dec(used._sum.amountUsd))).toFixed(2),
       card_max_usd: new Decimal(String(await this.settings.get('card_new_customer_max_usd', '200.00'))).toFixed(2),
       deposits_paused: await this.settings.get<boolean>('deposits_paused', false),
+      manual_bkash: {
+        enabled: bkashManualEnabled,
+        number: bkashManualNumber,
+        account_type: bkashAccountType,
+        instructions: bkashInstructions,
+        deposit_fx_rate: rate ? rate.toFixed(2) : '121.50',
+      },
     };
   }
 

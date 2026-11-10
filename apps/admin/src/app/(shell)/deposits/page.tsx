@@ -54,6 +54,32 @@ function Deposits() {
       setBusy(false);
     }
   };
+  const approveDeposit = (x: Detail): ActionSpec => ({
+    title: `Approve deposit ${x.ref}?`,
+    description: `This will credit ${usd(x.amount_usd)} directly to the user's available balance. bKash TrxID: ${x.tx_hash ?? '—'}, Sender: ${x.provider_payment_id ?? '—'}.`,
+    confirm: `Approve Deposit · ${usd(x.amount_usd)}`,
+    fields: [
+      { name: 'amount_usd', type: 'text', label: 'Amount to credit, USD', required: true, default: x.amount_usd, pattern: /^\d+(\.\d{1,2})?$/, patternMsg: 'Enter an amount with up to 2 decimals.' },
+      { name: 'provider_reference', type: 'text', label: 'TrxID / Provider reference', required: false, default: x.tx_hash ?? undefined, max: 120 },
+    ],
+    submit: (v) => post(`/admin/deposits/${x.ref}/approve`, { amount_usd: v.amount_usd, provider_reference: v.provider_reference }),
+    success: 'Deposit approved and balance credited.',
+    onDone: reloadAll,
+  });
+
+  const declineDeposit = (x: Detail): ActionSpec => ({
+    title: `Decline deposit ${x.ref}?`,
+    description: 'Nothing will be credited. The user will see this decline reason in their dashboard.',
+    confirm: 'Decline Deposit',
+    variant: 'destructive',
+    fields: [
+      { name: 'reason', type: 'textarea', label: 'Reason for declining', required: true, max: 300, helper: 'e.g. TrxID not found, payment not received, amount mismatch.' },
+    ],
+    submit: (v) => post(`/admin/deposits/${x.ref}/decline`, { reason: v.reason }),
+    success: 'Deposit declined.',
+    onDone: reloadAll,
+  });
+
   const manual = (x: Detail): ActionSpec => ({
     title: 'Request a manual credit?',
     description: 'A second admin has to approve this before any money moves. Use it only when you have proof of payment from the provider.',
@@ -140,10 +166,14 @@ function Deposits() {
               d && write && !d.pending_approval ? (
                 <>
                   {['initiated', 'pending', 'expired', 'failed', 'cancelled'].includes(d.status) ? (
-                    d.requery_supported ? <Button variant="secondary" loading={busy} onClick={() => void requery(d.ref)}>Check with provider</Button> : <Tooltip content="This provider has no status query yet."><span tabIndex={0}><Button variant="secondary" disabled disabledReasonId="rq">Check with provider</Button></span></Tooltip>
+                    d.requery_supported ? <Button variant="secondary" loading={busy} onClick={() => void requery(d.ref)}>Check with provider</Button> : null
                   ) : null}
-                  {['initiated', 'pending', 'expired'].includes(d.status) ? <Button variant="secondary" onClick={() => setSpec(markFailed(d))}>Mark failed</Button> : null}
-                  {['initiated', 'pending', 'expired'].includes(d.status) ? <Button onClick={() => setSpec(manual(d))}>Credit manually</Button> : null}
+                  {['initiated', 'pending', 'expired'].includes(d.status) ? (
+                    <>
+                      <Button variant="secondary" onClick={() => setSpec(declineDeposit(d))}>Decline Deposit</Button>
+                      <Button onClick={() => setSpec(approveDeposit(d))}>Approve Deposit</Button>
+                    </>
+                  ) : null}
                   {d.status === 'completed' ? <Button variant="secondary" onClick={() => setSpec(chargeback(d))}>Record chargeback</Button> : null}
                   {d.status === 'completed' ? <Button variant="destructive" onClick={() => setSpec(refund(d))}>Refund</Button> : null}
                   {d.status === 'refunded' ? <Button variant="secondary" onClick={() => setSpec(chargeback(d))}>Record chargeback</Button> : null}
@@ -159,7 +189,19 @@ function Deposits() {
                 {d.pending_approval ? <PendingCard p={d.pending_approval} canApprove={can('deposits.approve')} onApprove={() => setSpec(approvePending(d))} onDecline={() => setSpec(declinePending(d))} /> : null}
                 {d.needs_review ? <Alert tone="warning">This deposit needs review: pending over an hour or a webhook mismatch.</Alert> : null}
                 {d.failure_reason ? <Alert tone="danger">{d.failure_reason}</Alert> : null}
-                <KV items={[['Method', d.method_label], ['Requested', usd(d.amount_usd)], ['Received', usd(d.amount_received_usd)], ['Credited', usd(d.credited_amount_usd)], ['Refunded', usd(d.refunded_amount_usd)], ['Provider fee kept', d.provider_fee_exact ?? '—'], ...(d.charge_amount_bdt ? [['BDT charge', `৳${d.charge_amount_bdt} at ${d.fx_rate}`] as [string, string]] : []), ...(d.tx_hash ? [['Coin', `${d.pay_currency} · ${d.confirmations ?? 0} confirmations`] as [string, string], ['Tx hash', d.tx_hash] as [string, string]] : []), ['Provider ID', d.provider_payment_id ?? '—'], ['Credit', d.credit_ledger_ref ? <RefLink key="c" href={`/ledger?ref=${d.credit_ledger_ref}`}>{d.credit_ledger_ref}</RefLink> : '—'], ['Started', dt(d.initiated_at)], ['Completed', dt(d.completed_at)]]} />
+                <KV items={[
+                  ['Method', d.method_label],
+                  ['Requested', usd(d.amount_usd)],
+                  ['Credited', d.credited_amount_usd ? usd(d.credited_amount_usd) : '—'],
+                  ...(d.charge_amount_bdt ? [['BDT charge', `৳${d.charge_amount_bdt}${d.fx_rate ? ` at ${d.fx_rate}` : ''}`] as [string, string]] : []),
+                  ['bKash TrxID', d.tx_hash ?? '—'],
+                  ['Sender Number', d.provider_payment_id ?? '—'],
+                  ['Status', d.status],
+                  ...(d.failure_reason ? [['Decline reason', d.failure_reason] as [string, string]] : []),
+                  ['Credit Ref', d.credit_ledger_ref ? <RefLink key="c" href={`/ledger?ref=${d.credit_ledger_ref}`}>{d.credit_ledger_ref}</RefLink> : '—'],
+                  ['Started', dt(d.initiated_at)],
+                  ['Completed', dt(d.completed_at)],
+                ]} />
                 {d.status === 'completed' ? <Alert tone="info">Refundable now: {usd(d.refundable_usd)}. Refund window ends {day(d.refund_window_ends_at)}.</Alert> : null}
                 <div>
                   <h3 className="mb-2 text-label-md text-fg">Webhook history</h3>

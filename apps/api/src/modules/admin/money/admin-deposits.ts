@@ -205,6 +205,28 @@ export class AdminDepositsService {
     return { ref: d.publicRef, status: 'completed', credited_amount_usd: payload.amount_usd, ledger_ref: r.t.publicRef };
   }
 
+  async approve(ctx: AdminCtx, ref: string, b: Record<string, unknown>) {
+    const d = await this.find(ref);
+    if (!['initiated', 'pending', 'expired'].includes(d.status)) throw new ApiError('INVALID_STATE', 'This deposit cannot be approved.');
+    const amount = b.amount_usd ? needMoney(b.amount_usd, 'amount_usd') : dec(d.amountUsd);
+    const providerRef = (b.provider_reference ? String(b.provider_reference).trim() : null) || d.txHash || d.providerPaymentId || d.publicRef;
+    const r = await this.credit(ctx, d.id, amount, providerRef);
+    await this.audit.record(ctx, { action: 'deposit.approve', entityType: 'deposit', entityId: d.id, entityRef: d.publicRef, after: { status: 'completed', amount_usd: amount.toFixed(2), ledger_ref: r.t.publicRef, maker: ctx.fullName } });
+    return { ref: d.publicRef, status: 'completed', credited_amount_usd: m2(amount), ledger_ref: r.t.publicRef };
+  }
+
+  async decline(ctx: AdminCtx, ref: string, b: Record<string, unknown>) {
+    const reason = needText(b.reason ?? b.failure_reason, 300, 'reason', 'Enter a reason for declining.');
+    const d = await this.find(ref);
+    if (!['initiated', 'pending', 'expired'].includes(d.status)) throw new ApiError('INVALID_STATE', 'This deposit cannot be declined.');
+    await this.db.$transaction(async (tx) => {
+      await tx.deposit.update({ where: { id: d.id }, data: { status: 'failed', failedAt: new Date(), failureReason: reason } });
+      await this.audit.record(ctx, { action: 'deposit.decline', entityType: 'deposit', entityId: d.id, entityRef: d.publicRef, reason, before: { status: d.status }, after: { status: 'failed' } }, tx);
+    });
+    await this.notify.user(d.employerUserId, { type: 'deposit_failed', audience: 'employer', category: 'payments', title: 'Deposit declined', body: `Deposit ${d.publicRef} was declined: ${reason}`, linkPath: `/employer/wallet/deposits/${d.publicRef}`, mandatory: true });
+    return { ref: d.publicRef, status: 'failed', failure_reason: reason };
+  }
+
   async declinePending(ctx: AdminCtx, ref: string, b: Record<string, unknown>) {
     const note = needReason(b.decision_note, 500, 'decision_note');
     const d = await this.find(ref);
@@ -392,7 +414,7 @@ export class AdminDepositsController {
   @HttpCode(200)
   @Perms('deposits.approve')
   @Reauth()
-  decline(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
+  declinePendingAction(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
     return this.svc.declinePending(ctx, ref, b ?? {});
   }
 
@@ -401,6 +423,20 @@ export class AdminDepositsController {
   @Perms('deposits.write')
   markFailed(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
     return this.svc.markFailed(ctx, ref, b ?? {});
+  }
+
+  @Post(':ref/approve')
+  @HttpCode(200)
+  @Perms('deposits.write')
+  approve(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
+    return this.svc.approve(ctx, ref, b ?? {});
+  }
+
+  @Post(':ref/decline')
+  @HttpCode(200)
+  @Perms('deposits.write')
+  declineDeposit(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
+    return this.svc.decline(ctx, ref, b ?? {});
   }
 
   @Post(':ref/refund')

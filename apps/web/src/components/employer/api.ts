@@ -256,6 +256,13 @@ export interface WalletSummary {
     remaining_daily_usd: string;
     card_max_usd: string;
     deposits_paused: boolean;
+    manual_bkash?: {
+      enabled: boolean;
+      number: string;
+      account_type: string;
+      instructions: string;
+      deposit_fx_rate: string;
+    };
   };
 }
 
@@ -294,6 +301,8 @@ export interface DepositDetail {
   charge_amount_bdt: string | null;
   message_key: string;
   failure_reason: string | null;
+  trx_id?: string | null;
+  sender_number?: string | null;
   return_to: string | null;
   balance: { deposit_balance_usd: string; available_usd: string };
   created_at: string;

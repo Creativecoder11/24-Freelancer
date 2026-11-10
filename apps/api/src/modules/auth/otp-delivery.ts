@@ -47,13 +47,65 @@ export class LogOtpDelivery extends OtpDeliveryAdapter {
   }
 }
 
+@Injectable()
+export class EmailOtpDelivery extends OtpDeliveryAdapter {
+  private readonly log = new Logger('EmailOtpDelivery');
+  constructor(private readonly redis: RedisService) {
+    super();
+  }
+
+  async send(m: OtpMessage) {
+    const text = otpText(m);
+    this.log.log(`[Email OTP] → ${m.destination} (${m.purpose}): ${m.code}`);
+    await this.redis.client.set(`otp:last:${m.destination}`, m.code, 'EX', m.expiresMinutes * 60);
+
+    const resendKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.EMAIL_FROM ?? '24 Freelancing <noreply@24freelancing.com>';
+    if (resendKey && m.destination.includes('@')) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [m.destination],
+            subject: `Your 24 Freelancing Code: ${m.code}`,
+            html: `
+              <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+                <h2 style="color: #111827; margin-bottom: 16px;">24 Freelancing Verification</h2>
+                <p style="color: #4b5563; font-size: 15px;">Your verification code is:</p>
+                <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #1f2937; margin: 20px 0;">
+                  ${m.code}
+                </div>
+                <p style="color: #6b7280; font-size: 13px;">This code will expire in ${m.expiresMinutes} minutes. If you did not request this, please ignore this email.</p>
+              </div>
+            `,
+          }),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          this.log.error(`Failed to send email via Resend: ${errText}`);
+        } else {
+          this.log.log(`Email successfully sent to ${m.destination}`);
+        }
+      } catch (err) {
+        this.log.error(`Email delivery error: ${String(err)}`);
+      }
+    }
+  }
+}
+
 export const otpDeliveryProvider = {
   provide: OtpDeliveryAdapter,
   inject: [RedisService],
   useFactory: (redis: RedisService) => {
     const driver = getEnv().OTP_DELIVERY_DRIVER;
-    // Only the log driver exists so far; 'email' (and SMS gateways) plug in here.
-    if (driver !== 'log') new Logger('OtpDelivery').warn(`OTP_DELIVERY_DRIVER=${driver} has no adapter yet; using the log driver`);
+    if (process.env.RESEND_API_KEY || driver === 'email') {
+      return new EmailOtpDelivery(redis);
+    }
     return new LogOtpDelivery(redis);
   },
 };

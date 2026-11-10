@@ -76,7 +76,11 @@ export function DepositStatus({ refId }: { refId: string }) {
         <Row k="Amount" v={formatMoney(d.amount_usd)} />
         {d.credited_amount_usd ? <Row k="Added to balance" v={formatMoney(d.credited_amount_usd)} /> : null}
         <Row k="Method" v={d.method_label} />
+        {d.charge_amount_bdt ? <Row k="BDT Amount" v={`৳${d.charge_amount_bdt}`} /> : null}
+        {d.trx_id ? <Row k="bKash TrxID" v={<span className="font-mono font-bold text-fg-brand">{d.trx_id}</span>} /> : null}
+        {d.sender_number ? <Row k="Sender Number" v={d.sender_number} /> : null}
         <Row k="Status" v={<StatusBadge enum="deposit_status" code={d.status} />} />
+        {d.failure_reason ? <Row k="Decline reason" v={<span className="font-medium text-fg-danger">{d.failure_reason}</span>} /> : null}
         <Row k="Started" v={formatDateTime(d.created_at)} />
         <Row
           k="Reference"
@@ -161,7 +165,7 @@ function view(d: DepositDetail): { title: string; body: string; icon: IconName |
     case 'refunded':
       return { title: 'This deposit was refunded', body: 'The amount went back to your payment method.', icon: 'rotate', tile: 'bg-info-subtle text-fg-info' };
     default:
-      return { title: 'Confirming your payment', body: 'This usually takes a few minutes. You can leave this page.', icon: 'loader', tile: 'bg-brand-subtle text-fg-brand' };
+      return { title: 'Verifying your payment', body: 'Admin is manually verifying your payment. Your balance will be credited as soon as verified.', icon: 'loader', tile: 'bg-brand-subtle text-fg-brand' };
   }
 }
 

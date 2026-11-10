@@ -24,7 +24,7 @@ interface FakeChallenge {
 
 const TOO_MANY_CODES = "You've requested too many codes. Try again in an hour.";
 
-export const channelFor = (destination: string): OtpChannel => (destination.startsWith('+') ? 'sms' : 'email');
+export const channelFor = (destination: string): OtpChannel => (destination.includes('@') ? 'email' : 'email');
 
 /** OTP challenges (Doc 04 §3.6): 6 digits, HMAC-stored, TTL, resend cooldown, attempt cap. */
 @Injectable()

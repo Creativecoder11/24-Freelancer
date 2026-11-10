@@ -62,7 +62,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
 
   // ----------------------------------------------------------------- create
 
-  async create(userId: string, b: { method: string; sub_provider?: string; amount_usd: string; return_to?: string }, webOrigin: string) {
+  async create(userId: string, b: { method: string; sub_provider?: string; amount_usd: string; return_to?: string; sender_number?: string; trx_id?: string }, webOrigin: string) {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true, emailVerifiedAt: true, phoneVerifiedAt: true } });
     if (!user.emailVerifiedAt && !user.phoneVerifiedAt) throw new ApiError('VERIFICATION_REQUIRED');
     if (user.status !== 'active') throw new ApiError('ACCOUNT_RESTRICTED', 'Deposits are paused on your account. Contact support.');
@@ -90,9 +90,51 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
     const charge = rate ? amount.mul(rate).toDecimalPlaces(2, Decimal.ROUND_UP) : null;
     const minutes = await this.settings.number(`deposit_expiry_minutes_${b.method}`, b.method === 'crypto' ? 60 : 30);
     const expiresAt = new Date(Date.now() + minutes * 60_000);
-    const adapter = this.adapterFor(b.method);
     const returnTo = b.return_to && /^\/[A-Za-z0-9/_\-?=&.%]*$/.test(b.return_to) && !b.return_to.startsWith('//') ? b.return_to : null;
 
+    const trxId = b.trx_id ? String(b.trx_id).trim().toUpperCase() : null;
+    const senderNumber = b.sender_number ? String(b.sender_number).trim() : null;
+
+    if (trxId) {
+      if (!/^[A-Z0-9]{8,12}$/.test(trxId)) {
+        throw new ApiError('VALIDATION_FAILED', undefined, { trx_id: ['Enter a valid bKash TrxID (8 to 12 letters and numbers).'] });
+      }
+      const dup = await this.db.deposit.findFirst({ where: { txHash: trxId, status: { not: 'failed' } } });
+      if (dup) throw new ApiError('DUPLICATE_PROVIDER_TXN', 'This TrxID was already submitted on another deposit.');
+
+      const dep = await this.db.deposit.create({
+        data: {
+          employerUserId: userId,
+          method: 'mobile_wallet',
+          provider: 'bkash_manual',
+          providerAsset: 'bkash',
+          providerPaymentId: senderNumber,
+          txHash: trxId,
+          amountUsd: new Prisma.Decimal(amount.toFixed(6)),
+          fxRate: rate ? new Prisma.Decimal(rate.toFixed(6)) : null,
+          chargeAmountBdt: charge ? new Prisma.Decimal(charge.toFixed(2)) : null,
+          status: 'pending',
+          expiresAt,
+        },
+      });
+      const checkoutUrl = `/employer/wallet/deposits/${dep.publicRef}`;
+      await this.db.deposit.update({ where: { id: dep.id }, data: { checkoutUrl } });
+      if (returnTo) await this.redis.client.set(`deposit:return:${dep.publicRef}`, returnTo, 'EX', 86_400).catch(() => undefined);
+      const bal = await this.core.balances(userId);
+      return {
+        ref: dep.publicRef,
+        status: 'pending',
+        method: dep.method,
+        amount_usd: amount.toFixed(2),
+        charge_amount_bdt: charge?.toFixed(2) ?? null,
+        fx_rate: rate?.toFixed(2) ?? null,
+        checkout_url: checkoutUrl,
+        expires_at: expiresAt.toISOString(),
+        balance_after_usd: usd2(bal.total),
+      };
+    }
+
+    const adapter = this.adapterFor(b.method);
     const dep = await this.db.deposit.create({
       data: {
         employerUserId: userId,
@@ -173,7 +215,9 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       credited_amount_usd: d.creditedAmountUsd ? usd2(d.creditedAmountUsd) : null,
       charge_amount_bdt: d.chargeAmountBdt ? dec(d.chargeAmountBdt).toFixed(2) : null,
       message_key: key,
-      failure_reason: d.status === 'failed' ? (d.failureReason === 'provider_declined' ? 'The payment provider declined the payment' : null) : null,
+      failure_reason: d.status === 'failed' ? (d.failureReason ?? 'Payment declined') : null,
+      trx_id: d.txHash ?? null,
+      sender_number: d.providerPaymentId ?? null,
       return_to: returnTo,
       balance: { deposit_balance_usd: usd2(bal.total), available_usd: usd2(bal.available) },
       created_at: d.initiatedAt.toISOString(),
