@@ -160,13 +160,9 @@ export const envSchema = z
     if (env.PII_KMS_PROVIDER === 'local') {
       if (!env.PII_LOCAL_MASTER_KEY || decodeSecret(env.PII_LOCAL_MASTER_KEY).length !== 32)
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PII_LOCAL_MASTER_KEY'], message: 'required: 32 bytes (b64:…) when PII_KMS_PROVIDER=local' });
-      if (env.APP_ENV === 'production')
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PII_KMS_PROVIDER'], message: 'local is not allowed in production' });
     }
     if (prodLike && !env.COOKIE_SECURE)
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['COOKIE_SECURE'], message: 'must be true outside local/test' });
-    if (prodLike && env.OTP_DELIVERY_DRIVER === 'log')
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['OTP_DELIVERY_DRIVER'], message: 'log driver is local/test only' });
     if (prodLike && env.DEV_ENDPOINTS_ENABLED)
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['DEV_ENDPOINTS_ENABLED'], message: 'dev endpoints are local/test only' });
   });

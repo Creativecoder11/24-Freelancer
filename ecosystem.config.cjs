@@ -13,7 +13,7 @@ module.exports = {
       name: 'fl-web',
       cwd: './apps/web',
       script: 'node_modules/next/dist/bin/next',
-      args: 'start -p 3000',
+      args: 'start',
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
@@ -23,7 +23,7 @@ module.exports = {
       name: 'fl-admin',
       cwd: './apps/admin',
       script: 'node_modules/next/dist/bin/next',
-      args: 'start -p 3001',
+      args: 'start',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
