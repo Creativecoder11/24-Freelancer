@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Alert, Breadcrumbs, Link } from '@24f/ui';
 import { formatDate, type LegalPage } from '@24f/shared';
-import { ApiRequestError, apiGet } from '@/lib/api/server';
+import { ApiRequestError, apiGet, apiTry } from '@/lib/api/server';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { Markdown, headingsOf } from '@/components/public/Markdown';
 
@@ -24,10 +24,10 @@ export function generateStaticParams() {
 
 async function getDoc(slug: Slug): Promise<LegalPage | null> {
   try {
-    return (await apiGet<LegalPage>(`/public/legal/${slug}`, 300)).data;
-  } catch (e) {
-    if (e instanceof ApiRequestError && e.status === 404) return null;
-    throw e;
+    const res = await apiTry<LegalPage>(`/public/legal/${slug}`, 300);
+    return res?.data ?? null;
+  } catch {
+    return null;
   }
 }
 
