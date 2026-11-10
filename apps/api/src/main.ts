@@ -9,7 +9,11 @@ import { getEnv } from './config/env';
 try {
   process.loadEnvFile?.('.env');
 } catch {
-  /* no .env file: rely on the environment */
+  try {
+    process.loadEnvFile?.('apps/api/.env');
+  } catch {
+    /* no .env file: rely on the environment */
+  }
 }
 
 async function bootstrap() {

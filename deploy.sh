@@ -22,7 +22,7 @@ pnpm run db:generate
 echo "==> [4/5] Building all applications..."
 pnpm -r run build
 
-echo "==> [5/5] Restarting PM2 services..."
-pm2 restart all
+echo "==> [5/5] Starting / Reloading PM2 services via ecosystem.config.cjs..."
+pm2 startOrReload ecosystem.config.cjs --update-env || pm2 restart ecosystem.config.cjs || pm2 start ecosystem.config.cjs
 
 echo "==> Deployment finished successfully!"

@@ -10,6 +10,8 @@ function loadDotEnvFiles(): void {
   const candidates = [
     path.resolve(process.cwd(), '.env.local'),
     path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'apps/api/.env.local'),
+    path.resolve(process.cwd(), 'apps/api/.env'),
     path.resolve(process.cwd(), '../../.env'),
   ];
   for (const file of candidates) {
