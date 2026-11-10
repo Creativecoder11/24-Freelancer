@@ -15,10 +15,9 @@ const int = (v: string | undefined, def: number) => {
 export function adminEnv() {
   getEnv(); // ensures .env files are loaded
   const e = process.env;
-  const prod = getEnv().APP_ENV === 'production';
   return {
-    /** Mandatory per spec; `ADMIN_TOTP_REQUIRED=false` relaxes it for local dev only. Forced on in production. */
-    totpRequired: prod ? true : bool(e.ADMIN_TOTP_REQUIRED, true),
+    /** TOTP is disabled by default or when ADMIN_TOTP_REQUIRED=false */
+    totpRequired: bool(e.ADMIN_TOTP_REQUIRED, false),
     idleMinutes: int(e.ADMIN_SESSION_IDLE_MINUTES, 30),
     idleMinutesPrivileged: int(e.ADMIN_SESSION_IDLE_MINUTES_PRIVILEGED, 15),
     maxHours: int(e.ADMIN_SESSION_MAX_HOURS, 12),

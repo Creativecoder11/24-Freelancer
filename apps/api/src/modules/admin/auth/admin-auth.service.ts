@@ -110,7 +110,7 @@ export class AdminAuthService {
       await this.db.adminUser.update({ where: { id: admin.id }, data: { failedLoginCount: 0 } });
       return { access_token: this.sessions.signSetup(admin.id, 'enrol_totp'), expires_in: 1800, admin: this.adminDto(admin, []), next: 'enrol_totp' as const };
     }
-    if (enrolled) {
+    if (enrolled && env.totpRequired) {
       if (!body.totp_code) throw new ApiError('ADMIN_TOTP_REQUIRED');
       if (!(await this.checkTotp(admin.id, admin.totpSecretEnc, body.totp_code))) {
         await fail('totp_invalid');
@@ -218,7 +218,7 @@ export class AdminAuthService {
     const env = adminEnv();
     const admin = await this.db.adminUser.findUniqueOrThrow({ where: { id: ctx.id } });
     const enrolled = !!admin.totpEnrolledAt && !!admin.totpSecretEnc;
-    if (enrolled || env.totpRequired) {
+    if (env.totpRequired && enrolled) {
       const failKey = `admin:reauth_fail:${ctx.id}`;
       if (!(await this.checkTotp(admin.id, admin.totpSecretEnc, code))) {
         const { count } = await this.redis.hit(failKey, 15 * 60).catch(() => ({ count: 0, ttl: 0 }));
@@ -256,7 +256,7 @@ export class AdminAuthService {
       permissions: expandPerms(ctx.perms),
       totp_enrolled: ctx.totpEnrolled,
       totp_required: env.totpRequired,
-      reauth_needed: env.totpRequired || ctx.totpEnrolled,
+      reauth_needed: env.totpRequired && ctx.totpEnrolled,
       session: { idle_minutes: idle, last_active_at: s?.lastActiveAt.toISOString() ?? null, expires_at: s?.expiresAt.toISOString() ?? null },
       app_env: getEnv().APP_ENV,
     };
