@@ -5,6 +5,7 @@
 @source "../../../../packages/ui/src";
 
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { background: var(--fl-bg-surface); }
 :focus-visible { outline: none; box-shadow: var(--fl-shadow-focus); }
 
 /* ---- Motion bootstrapping (GSAP). Elements start hidden only when JS + motion are available. ---- */

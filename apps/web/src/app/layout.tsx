@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body>
+      <body className="bg-surface">
         <Providers>{children}</Providers>
       </body>
     </html>
