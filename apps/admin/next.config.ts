@@ -14,7 +14,10 @@ const nextConfig: NextConfig = {
     return [{ source: '/api/v1/:path*', destination: `${API_ORIGIN}/api/v1/:path*`, basePath: false }];
   },
   async redirects() {
-    return [{ source: '/', destination: '/admin', permanent: false, basePath: false }];
+    return [
+      { source: '/', destination: '/admin', permanent: false, basePath: false },
+      { source: '/favicon.ico', destination: '/admin/favicon.ico', permanent: false, basePath: false },
+    ];
   },
   async headers() {
     return [{ source: '/:path*', headers: [{ key: 'Cache-Control', value: 'no-store' }, { key: 'X-Robots-Tag', value: 'noindex, nofollow' }] }];

@@ -1,5 +1,8 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { RequestMethod } from '@nestjs/common';
+import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -23,6 +26,17 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: origins, credentials: true });
+
+  const serveAsset = (filename: string, contentType: string) => (_req: Request, res: Response, next: NextFunction) => {
+    const file = [path.resolve(process.cwd(), 'assets', filename), path.resolve(process.cwd(), 'apps/api/assets', filename)].find((p) => fs.existsSync(p));
+    if (!file) return next();
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type(contentType);
+    res.sendFile(file);
+  };
+  app.use('/favicon.ico', serveAsset('favicon.ico', 'image/x-icon'));
+  app.use('/icon.svg', serveAsset('icon.svg', 'image/svg+xml'));
+
   app.setGlobalPrefix('api/v1', { exclude: [{ path: 'healthz', method: RequestMethod.GET }, { path: 'readyz', method: RequestMethod.GET }] });
   app.enableShutdownHooks();
   await app.listen(env.PORT);
