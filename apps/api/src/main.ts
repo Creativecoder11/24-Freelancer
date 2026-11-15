@@ -40,5 +40,10 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1', { exclude: [{ path: 'healthz', method: RequestMethod.GET }, { path: 'readyz', method: RequestMethod.GET }] });
   app.enableShutdownHooks();
   await app.listen(env.PORT);
+  // Behind proxies (Next.js rewrites, load balancers) keep idle sockets open longer than the proxy does,
+  // so a reused keep-alive connection is never closed mid-request.
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 }
 void bootstrap();

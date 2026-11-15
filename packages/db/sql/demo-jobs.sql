@@ -60,7 +60,8 @@ SELECT j.pid, u.id, c.id, j.title, ('about_'||j.est)::time_per_task, j.est, j.di
   now() - make_interval(mins => j.ago), now() - make_interval(mins => j.ago) + interval '7 days', now() - make_interval(mins => j.ago), 4,
   'https://docs.google.com/spreadsheets/d/demo', 'Follow every step and add the proof listed below.', j.filled*30, j.filled*4
 FROM demo_jobs j JOIN employer_profiles e ON e.business_name=j.emp JOIN users u ON u.id=e.user_id JOIN categories c ON c.slug=j.cat
-ON CONFLICT (public_id) DO UPDATE SET published_at=EXCLUDED.published_at, ends_at=EXCLUDED.ends_at, status='running', count_approved=EXCLUDED.count_approved;
+ON CONFLICT (public_id) DO UPDATE SET published_at=EXCLUDED.published_at, ends_at=EXCLUDED.ends_at, status='running',
+  close_reason=NULL, closed_at=NULL, pause_reason=NULL, paused_at=NULL;
 
 DELETE FROM jobs WHERE public_id='WJ-58409' AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.job_id=jobs.id);
 
@@ -80,9 +81,12 @@ FROM jobs jb JOIN demo_jobs j ON j.pid=jb.public_id CROSS JOIN LATERAL unnest(j.
 WHERE NOT EXISTS (SELECT 1 FROM job_proof_requirements x WHERE x.job_id=jb.id);
 
 -- Re-time the original fixture jobs so they are live today (Figma: posted 2 min ago etc.).
-UPDATE jobs SET published_at = now() - interval '2 minutes', ends_at = now() + interval '5 days', count_approved = 14 - count_in_review - count_needs_fix - count_active_reservations
-  WHERE public_id='WJ-58213';
-UPDATE jobs SET published_at = now() - interval '9 days' + interval '8 days', ends_at = now() + interval '3 days' WHERE public_id='WJ-58102';
-UPDATE jobs SET published_at = now() - interval '1 hour', ends_at = now() + interval '6 days' WHERE public_id='WJ-58344';
+-- Reopen the original Figma fixture jobs (approval counts are real activity and are left alone).
+UPDATE jobs SET status = 'running', close_reason = NULL, closed_at = NULL, pause_reason = NULL, paused_at = NULL,
+  published_at = now() - interval '2 minutes', ends_at = now() + interval '5 days' WHERE public_id = 'WJ-58213';
+UPDATE jobs SET status = 'running', close_reason = NULL, closed_at = NULL, pause_reason = NULL, paused_at = NULL,
+  published_at = now() - interval '1 day', ends_at = now() + interval '3 days' WHERE public_id = 'WJ-58102';
+UPDATE jobs SET status = 'running', close_reason = NULL, closed_at = NULL, pause_reason = NULL, paused_at = NULL,
+  published_at = now() - interval '1 hour', ends_at = now() + interval '6 days' WHERE public_id = 'WJ-58344';
 
 COMMIT;

@@ -65,7 +65,7 @@ function isActive(pathname: string, item: AppNavItem, all: AppNavItem[]) {
 export function Sidebar({ mode, items, user, onLogout, className, onNavigate }: { mode: AppMode; items: AppNavItem[]; user: AppUser; onLogout: () => void; className?: string; onNavigate?: () => void }) {
   const pathname = usePathname() ?? '';
   return (
-    <div className={cn('flex h-full flex-col bg-surface px-4 pb-4 pt-6', className)}>
+    <div className={cn('flex min-h-full flex-col bg-surface px-4 pb-4 pt-6', className)}>
       <NextLink href={mode === 'worker' ? '/worker' : '/employer'} className="px-2" aria-label="24 Freelancing dashboard">
         <Logo decorative />
       </NextLink>
@@ -278,7 +278,7 @@ export function AppShell({ mode, user, badges, onLogout, header, children, hideT
 
   return (
     <div className="min-h-dvh bg-canvas desktop:pl-[var(--fl-sidebar)]">
-      <aside className="fixed inset-y-0 left-0 z-[var(--fl-z-sidebar)] hidden w-[var(--fl-sidebar)] border-r border-line-subtle desktop:block">
+      <aside className="fixed inset-y-0 left-0 z-[var(--fl-z-sidebar)] hidden w-[var(--fl-sidebar)] overflow-y-auto overscroll-contain border-r border-line-subtle bg-surface desktop:block">
         <Sidebar mode={mode} items={items} user={user} onLogout={onLogout} />
       </aside>
       <Drawer open={drawer} onOpenChange={setDrawer} title="Navigation" side="left" width={360} sheetOnMobile={false}>

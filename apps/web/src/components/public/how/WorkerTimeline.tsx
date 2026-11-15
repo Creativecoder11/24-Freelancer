@@ -151,12 +151,12 @@ export function WorkerTimeline() {
   );
 
   return (
-    <ol ref={scope} className="relative mt-10 space-y-6">
+    <ol ref={scope} className="relative mt-10 space-y-6 overflow-x-clip">
       {/* Track + scrubbed progress line (x 151 in the 1440 frame → 31 px into the container). */}
       <span aria-hidden className="absolute bottom-8 left-[19px] top-6 w-0.5 rounded-full bg-line desktop:left-[31px]" />
       <span aria-hidden className="tl-progress absolute bottom-8 left-[19px] top-6 w-0.5 origin-top rounded-full bg-brand desktop:left-[31px]" />
       {STEPS.map((s, i) => (
-        <li key={s.title} className="tl-step relative grid gap-5 pl-14 desktop:min-h-[216px] desktop:grid-cols-[1fr_600px] desktop:gap-6 desktop:pl-[88px]">
+        <li key={s.title} className="tl-step relative grid gap-5 pl-14 [&>*]:min-w-0 desktop:min-h-[216px] desktop:grid-cols-[1fr_600px] desktop:gap-6 desktop:pl-[88px]">
           <span aria-hidden className="absolute left-0 top-1 grid size-10 place-items-center rounded-full border-2 border-line bg-surface text-label-md text-fg-tertiary desktop:left-3 desktop:top-2">
             {i + 1}
             <span className="tl-fill absolute -inset-0.5 grid place-items-center rounded-full bg-brand text-fg-on-brand shadow-[0_0_0_6px_var(--fl-bg-brand-subtle)]">{i + 1}</span>

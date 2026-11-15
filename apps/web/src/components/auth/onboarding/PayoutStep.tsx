@@ -1,11 +1,13 @@
 'use client';
 import NextLink from 'next/link';
+import { useState } from 'react';
 import { Alert, Button, buttonClasses, toast } from '@24f/ui';
+import { AddPayoutMethodDialog } from '@/components/wallet/PayoutMethodDialogs';
 import { OnboardingCard, OnboardingShell, OnboardingTwoColumn, SAVE_FAILED, SetupChecklist, SkipLink, useOnboardingStep, workerChecklist } from './OnboardingShell';
 
 /**
- * SCR-AUTH-ND1 Onboarding step 3, payout method (G-03, Doc 02 §6.9.5). Placeholder until the
- * wallet module ships payout methods: the step is skippable and finishes onboarding.
+ * SCR-AUTH-ND1 Onboarding step 3, payout method (G-03, Doc 02 §6.9.5). "Add payout method" opens the
+ * same dialog as Settings (POST /payout-methods, password confirmed); saving or skipping finishes onboarding.
  */
 export function PayoutStep() {
   return (
@@ -21,6 +23,8 @@ export function PayoutStep() {
 
 function PayoutCard() {
   const step = useOnboardingStep();
+  const [open, setOpen] = useState(false);
+  const [added, setAdded] = useState(false);
   const finish = () => step.mutate({ step: 'skip' }, { onError: () => toast.show(SAVE_FAILED) });
   return (
     <OnboardingCard
@@ -28,20 +32,40 @@ function PayoutCard() {
       title="Where should we send your earnings?"
       sub="You can add this later, but you’ll need it before your first withdrawal."
     >
-      <Alert tone="info" className="mt-8">
-        Add a payout method later in Settings.
-      </Alert>
+      {added ? (
+        <Alert tone="success" className="mt-8">
+          Payout method saved. You can manage it any time in Settings.
+        </Alert>
+      ) : (
+        <div className="mt-8 rounded-[14px] border border-line bg-subtle p-5">
+          <p className="text-label-lg text-fg">bKash, Nagad, Rocket or USDT</p>
+          <p className="mt-1 text-body-sm text-fg-secondary">Payments go only to an account you control. A new method can be used 24 hours after you add it.</p>
+          <Button variant="secondary" className="mt-4" leadingIcon="plus" onClick={() => setOpen(true)}>
+            Add payout method
+          </Button>
+        </div>
+      )}
       <div className="mt-8 flex flex-wrap items-center justify-end gap-3">
         <NextLink href="/onboarding/interests" className={buttonClasses({ variant: 'secondary', size: 'L', className: 'w-[120px]' })}>
           Back
         </NextLink>
-        <Button variant="tertiary" size="L" onClick={finish} disabled={step.isPending}>
-          Skip for now
-        </Button>
+        {!added ? (
+          <Button variant="tertiary" size="L" onClick={finish} disabled={step.isPending}>
+            Skip for now
+          </Button>
+        ) : null}
         <Button size="L" className="w-[160px]" onClick={finish} loading={step.isPending} loadingText="Finishing…">
           Finish setup
         </Button>
       </div>
+      <AddPayoutMethodDialog
+        open={open}
+        onOpenChange={setOpen}
+        onSaved={() => {
+          setOpen(false);
+          setAdded(true);
+        }}
+      />
     </OnboardingCard>
   );
 }

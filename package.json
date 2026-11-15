@@ -16,7 +16,8 @@
     "db:migrate:deploy": "pnpm --filter @24f/db exec prisma migrate deploy",
     "db:seed": "pnpm --filter @24f/db run seed:base",
     "db:seed:demo": "pnpm --filter @24f/db run seed:demo",
-    "db:studio": "pnpm --filter @24f/db exec prisma studio"
+    "db:studio": "pnpm --filter @24f/db exec prisma studio",
+    "db:demo-refresh": "pnpm --filter @24f/db run seed:demo-refresh"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

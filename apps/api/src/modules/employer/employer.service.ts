@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Optional } from '@nestjs/common';
+import { UploadsService } from '../uploads/uploads.service';
 import { Prisma } from '@24f/db';
 import Decimal from 'decimal.js';
 import { initials, maskName } from '@24f/shared';
@@ -14,6 +16,7 @@ export class EmployerService {
   constructor(
     private readonly core: EmployerCore,
     private readonly settings: SettingsService,
+    @Optional() private readonly uploads?: UploadsService,
   ) {}
 
   private get db() {
@@ -196,7 +199,7 @@ export class EmployerService {
       public_id: u.publicId,
       business_name: p.businessName,
       initials: initials(p.businessName),
-      logo_url: null,
+      logo_url: p.logoUploadId && this.uploads ? this.uploads.signedUrl(p.logoUploadId, 'full') : null,
       website_url: p.websiteUrl,
       industry: p.industry,
       billing_email: p.billingEmail,
