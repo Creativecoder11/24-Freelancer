@@ -8,6 +8,7 @@ export * from './format';
 export * from './mask';
 export * from './identifier';
 export * from './uploads';
+export * from './job-targeting';
 export * from './types';
 export * from './schemas/common';
 export * from './schemas/auth';

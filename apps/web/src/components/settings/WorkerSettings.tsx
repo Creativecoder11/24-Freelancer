@@ -15,7 +15,7 @@ import { Section, SectionSkeleton, SettingRow, SettingsShell, type SettingsNavIt
 import { CloseAccountSection, NotificationsSection, SecuritySection } from './account';
 import { VerificationSection } from './kyc';
 
-const HEADER = { title: 'Settings', subtitle: 'Manage your profile, payouts, security and notifications.' };
+const HEADER = { title: 'Profile', subtitle: 'Manage your profile, payouts, security and notifications.' };
 const NAV: SettingsNavItem[] = [
   { id: 'profile', label: 'Profile', icon: 'user' },
   { id: 'payout-methods', label: 'Payout methods', icon: 'wallet' },

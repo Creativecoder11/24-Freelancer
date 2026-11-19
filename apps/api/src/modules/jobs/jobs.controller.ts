@@ -13,8 +13,8 @@ const listQuery = z.object({
   page: queryPage,
   per_page: queryPerPage(10),
 });
-const quoteBody = z.object({ reward_usd: z.string().optional(), slots_total: z.number().int().optional() });
-const publishBody = z.object({ posting_rules_accepted: z.boolean().optional(), expected_total_reserved_usd: z.string().optional() });
+const quoteBody = z.object({ reward_usd: z.string().optional(), slots_total: z.number().int().optional(), boost_days: z.number().int().min(0).max(30).optional() });
+const publishBody = z.object({ posting_rules_accepted: z.boolean().optional(), expected_total_reserved_usd: z.string().optional(), expected_boost_fee_usd: z.string().optional() });
 const resumeBody = z.object({ expected_reserve_usd: z.string().optional() });
 const slotsBody = z.object({ add_slots: z.number().int(), expected_amount_usd: z.string().optional() });
 const marketQuery = z.object({ category: z.string().optional(), time_per_task: z.string().optional() });
@@ -39,6 +39,12 @@ export class JobsController {
   @Get('job-categories')
   categories() {
     return this.jobs.categories();
+  }
+
+  /** Post-a-job settings: minimum spend, boost prices, schedule limit. */
+  @Get('job-options')
+  options() {
+    return this.jobs.options();
   }
 
   @Get('market-rates')

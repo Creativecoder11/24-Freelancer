@@ -30,6 +30,11 @@ export const SETTING_RULES: Record<string, SettingRule> = {
   job_id_prefix: r('jobs', 'string', 'C3', 'New job IDs only', { enum: undefined, maxLen: 3, superOnly: true }),
   job_new_badge_minutes: r('jobs', 'integer', 'C1', 'Immediately', { min: 0, max: 1440 }),
   open_for_days_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 1, max: 90 }),
+  // Post-a-job change request (Nov 2026): minimum spend, paid boost, scheduled start.
+  job_min_spend_usd: r('jobs', 'number', 'C2', 'Jobs published after the change', { min: 0, max: 1000, dp: 2 }),
+  boost_price_per_day_usd: r('jobs', 'number', 'C2', 'Jobs published after the change', { min: 0, max: 1000, dp: 2 }),
+  boost_days_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 1, max: 30 }),
+  job_schedule_max_days: r('jobs', 'integer', 'C1', 'New jobs', { min: 1, max: 90 }),
   min_approval_rate_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 0, max: 100 }),
   slot_hold_minutes: r('jobs', 'integer', 'C1', 'New reservations', { min: 5, max: 1440 }),
   max_active_reservations_per_worker: r('jobs', 'integer', 'C1', 'New starts', { min: 1, max: 20 }),

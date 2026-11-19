@@ -29,7 +29,7 @@ export function useEmployerHeader(h: EmployerHeader) {
 
 /** Fallback titles until a page sets its own (and for routes owned by other areas, e.g. Settings). */
 function defaultHeader(path: string): EmployerHeader {
-  if (path.startsWith('/employer/settings')) return { title: 'Settings', subtitle: 'Your business profile, job defaults and account.' };
+  if (path.startsWith('/employer/settings')) return { title: 'Profile', subtitle: 'Your business profile, job defaults and account.' };
   if (path.startsWith('/employer/notifications')) return { title: 'Notifications' };
   if (path.startsWith('/employer/wallet')) return { title: 'Wallet' };
   if (path.startsWith('/employer/submissions')) return { title: 'Review submissions' };

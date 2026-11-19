@@ -45,7 +45,7 @@ export function useLogout() {
 
 function FullPageSpinner() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas" aria-busy="true">
+    <div className="flex min-h-screen items-center justify-center bg-surface" aria-busy="true">
       <Spinner size={24} label="Loading" />
     </div>
   );

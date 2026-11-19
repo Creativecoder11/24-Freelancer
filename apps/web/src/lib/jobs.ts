@@ -26,5 +26,7 @@ export function toRowData(j: JobCard, now = Date.now()): JobRowData {
     slotsFilled: j.slots_filled,
     slotsTotal: j.slots_total,
     rewardLabel: formatReward(j.reward_usd),
+    isNew: j.is_new,
+    isBoosted: !!j.is_boosted,
   };
 }

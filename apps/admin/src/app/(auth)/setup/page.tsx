@@ -78,7 +78,7 @@ function Setup() {
   };
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-canvas px-4 py-10">
+    <main className="grid min-h-dvh place-items-center bg-surface px-4 py-10">
       <div className="w-full max-w-[440px]">
         <div className="mb-6 flex justify-center">
           <Logo />

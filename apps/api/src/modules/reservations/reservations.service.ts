@@ -12,7 +12,7 @@ import type {
   UploadPurpose,
   WorkerReservation,
 } from '@24f/shared';
-import { isHttpsUrl, LINK_INVALID_MESSAGE } from '@24f/shared';
+import { isHttpsUrl, jobVisibleIn, LINK_INVALID_MESSAGE } from '@24f/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { RedisService } from '../../common/redis.service';
 import { ApiError } from '../../common/api-error';
@@ -105,7 +105,7 @@ export class ReservationsService {
     const user = await this.prisma.db.user.findUnique({ where: { id: userId }, include: { workerProfile: true } });
     if (!user) throw new ApiError('UNAUTHENTICATED');
     if (user.status !== 'active') throw new ApiError('ACCOUNT_RESTRICTED');
-    if (!user.emailVerifiedAt && !user.phoneVerifiedAt) throw new ApiError('VERIFICATION_REQUIRED');
+    if (user.kycStatus !== 'verified' && user.kycStatus !== 'pending') throw new ApiError('VERIFICATION_REQUIRED', 'Submit your verification documents to start jobs.');
 
     const holdMinutes = await this.settings.number('slot_hold_minutes', 60);
     const maxActive = await this.settings.number('max_active_reservations_per_worker', 3);
@@ -127,7 +127,11 @@ export class ReservationsService {
           return { created: false, body: { reservation: await this.view(existing, job), task_link_url: job.taskLinkUrl, slots_left: Math.max(job.slotsLeft ?? 0, 0) } };
         }
         if (job.status !== 'running' || !job.endsAt || job.endsAt <= new Date()) throw new ApiError('JOB_NOT_AVAILABLE', undefined, undefined, { job_status: job.status });
+        if (job.startsAt && job.startsAt > new Date()) throw new ApiError('JOB_NOT_AVAILABLE', 'This job hasn’t started yet.', undefined, { job_status: job.status });
         if (job.employerUserId === userId) throw new ApiError('OWN_JOB');
+        if (!jobVisibleIn(user.countryCode, { target_countries: job.targetCountries, excluded_countries: job.excludedCountries })) {
+          throw new ApiError('NOT_ELIGIBLE', 'This job isn’t available in your country.', undefined, { reason: 'location' });
+        }
         const sub = await tx.submission.findFirst({ where: { jobId: job.id, workerUserId: userId }, select: { publicRef: true } });
         if (sub) throw new ApiError('ALREADY_SUBMITTED', undefined, undefined, { submission_ref: sub.publicRef });
         if (job.eligibility === 'kyc_verified' && user.kycStatus !== 'verified') {

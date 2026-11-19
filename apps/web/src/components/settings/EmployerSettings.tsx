@@ -11,7 +11,7 @@ import { useMe } from '@/lib/auth/session';
 import { Section, SectionSkeleton, SettingRow, SettingsShell, type SettingsNavItem } from './SettingsShell';
 import { CloseAccountSection, NotificationsSection, SecuritySection } from './account';
 
-const HEADER = { title: 'Settings', subtitle: 'Business details, job defaults, billing and security.' };
+const HEADER = { title: 'Profile', subtitle: 'Business details, job defaults, billing and security.' };
 const NAV: SettingsNavItem[] = [
   { id: 'business-profile', label: 'Business profile', icon: 'briefcase' },
   { id: 'job-defaults', label: 'Job defaults', icon: 'filter' },

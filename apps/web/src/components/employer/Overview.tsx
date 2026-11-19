@@ -107,13 +107,6 @@ function OverviewBody({ d }: { d: OverviewData }) {
         </Alert>
       ) : null}
 
-      <nav aria-label="Quick actions" className="grid grid-cols-2 gap-3 desktop:grid-cols-4 desktop:gap-6">
-        <QuickAction href="/employer/jobs/new" title="Post a job" sub="Cost shown upfront" icon="plus-circle" />
-        <QuickAction href="/employer/submissions" title="Review submissions" sub={`${d.quick_actions.review_waiting} waiting`} icon="inbox" />
-        <QuickAction href="/employer/wallet" title="Add funds" sub={`Balance ${formatMoney(d.quick_actions.deposit_balance_usd)}`} icon="wallet" />
-        <QuickAction href="/employer/wallet/transactions" title="Transactions" sub="Deposits & spending" icon="file-text" />
-      </nav>
-
       <section aria-labelledby="running-h">
         <div className="flex items-center justify-between">
           <h2 id="running-h" className="font-display text-h4 text-fg tablet:text-h3">
@@ -146,24 +139,6 @@ function OverviewBody({ d }: { d: OverviewData }) {
   );
 }
 
-function QuickAction({ href, title, sub, icon }: { href: string; title: string; sub: string; icon: 'plus-circle' | 'inbox' | 'wallet' | 'file-text' }) {
-  return (
-    <NextLink
-      href={href}
-      data-stagger
-      className="group flex min-h-[80px] items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-xs transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:shadow-focus focus-visible:outline-none tablet:px-4 tablet:py-5"
-    >
-      <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-brand-subtle text-fg-brand desktop:hidden">
-        <Icon name={icon} size={20} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-label-md text-fg">{title}</span>
-        <span className="mt-0.5 block truncate text-body-sm text-fg-secondary">{sub}</span>
-      </span>
-      <Icon name="arrow-right" size={20} className="hidden shrink-0 text-fg-tertiary transition-transform group-hover:translate-x-0.5 desktop:block" />
-    </NextLink>
-  );
-}
 
 export function RunningJobCard({ j }: { j: RunningJob }) {
   const footer = j.status === 'running' ? endsLabel(j.ends_at) : pausedLabel(j.pause_reason, j.paused_at, j.status);

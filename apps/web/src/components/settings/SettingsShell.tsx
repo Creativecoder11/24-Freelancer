@@ -1,11 +1,10 @@
 'use client';
 /**
- * Settings layout (Doc 02 §5.47.17): desktop 240 px sticky sub-nav with anchor scroll-spy (updates
- * the URL hash), mobile horizontal chip row; sections stacked. Scrolls to the hash on load and
- * briefly highlights the section.
+ * Profile page layout (Doc 02 §5.47.17, sub-nav removed): sections stacked full width.
+ * Deep links like `#payout-methods` still scroll to that section on load and briefly highlight it.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Icon, cn, gsap, MOTION_OK, type IconName } from '@24f/ui';
+import { useEffect } from 'react';
+import { cn, gsap, MOTION_OK, type IconName } from '@24f/ui';
 
 export interface SettingsNavItem {
   id: string;
@@ -14,88 +13,21 @@ export interface SettingsNavItem {
 }
 
 export function SettingsShell({ items, children }: { items: SettingsNavItem[]; children: React.ReactNode }) {
-  const [active, setActive] = useState(items[0]!.id);
-  const lock = useRef(0);
-  const chips = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    const els = items.map((i) => document.getElementById(i.id)).filter((x): x is HTMLElement => !!x);
-    const onScroll = () => {
-      if (Date.now() < lock.current) return;
-      const line = 140;
-      let cur = els[0]?.id ?? items[0]!.id;
-      for (const el of els) if (el.getBoundingClientRect().top - line <= 0) cur = el.id;
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = els[els.length - 1]?.id ?? cur;
-      setActive((prev) => {
-        if (prev !== cur && window.location.hash !== `#${cur}`) history.replaceState(null, '', `#${cur}`);
-        return cur;
-      });
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    // Initial hash: scroll there and flash the section.
     const hash = window.location.hash.slice(1);
-    if (hash && items.some((i) => i.id === hash)) {
-      setTimeout(() => go(hash, false), 120);
-    }
-    return () => window.removeEventListener('scroll', onScroll);
+    if (!hash || !items.some((i) => i.id === hash)) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (!el) return;
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 100, behavior: 'auto' });
+      el.focus({ preventScroll: true });
+      if (window.matchMedia(MOTION_OK).matches) gsap.fromTo(el, { boxShadow: '0 0 0 4px var(--fl-border-focus)' }, { boxShadow: '0 0 0 0px transparent', duration: 1.2, delay: 0.3, clearProps: 'boxShadow' });
+    }, 120);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    chips.current?.querySelector<HTMLElement>(`[data-id="${active}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [active]);
-
-  const go = (id: string, smooth = true) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    lock.current = Date.now() + 700;
-    setActive(id);
-    history.replaceState(null, '', `#${id}`);
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 100, behavior: smooth && !reduce ? 'smooth' : 'auto' });
-    el.focus({ preventScroll: true });
-    if (window.matchMedia(MOTION_OK).matches) gsap.fromTo(el, { boxShadow: '0 0 0 4px var(--fl-border-focus)' }, { boxShadow: '0 0 0 0px transparent', duration: 1.2, delay: 0.3, clearProps: 'boxShadow' });
-  };
-
-  return (
-    <div className="mx-auto w-full max-w-[1104px] desktop:grid desktop:grid-cols-[240px_minmax(0,1fr)] desktop:gap-6">
-      <nav aria-label="Settings sections" className="desktop:sticky desktop:top-[100px] desktop:h-fit">
-        <div ref={chips} className="sticky top-[60px] z-[5] -mx-5 mb-5 flex gap-2 overflow-x-auto bg-canvas px-5 py-2 [scrollbar-width:none] tablet:-mx-8 tablet:px-8 desktop:hidden [&::-webkit-scrollbar]:hidden">
-          {items.map((i) => (
-            <a
-              key={i.id}
-              data-id={i.id}
-              href={`#${i.id}`}
-              aria-current={active === i.id ? 'location' : undefined}
-              onClick={(e) => (e.preventDefault(), go(i.id))}
-              className={cn('inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[22px] px-4 text-label-md transition-colors', active === i.id ? 'bg-inverse text-fg-inverse' : 'border border-line bg-surface text-fg-secondary')}
-            >
-              {i.label}
-            </a>
-          ))}
-        </div>
-        <ul className="hidden rounded-card border border-line bg-surface p-2 shadow-xs desktop:block">
-          {items.map((i) => (
-            <li key={i.id}>
-              <a
-                href={`#${i.id}`}
-                aria-current={active === i.id ? 'location' : undefined}
-                onClick={(e) => (e.preventDefault(), go(i.id))}
-                className={cn(
-                  'flex h-11 items-center gap-3 rounded-[10px] px-3 text-label-md outline-none transition-colors focus-visible:shadow-focus',
-                  active === i.id ? 'bg-brand-subtle text-fg-brand' : 'text-fg-secondary hover:bg-subtle hover:text-fg',
-                )}
-              >
-                <Icon name={i.icon} size={20} />
-                {i.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <div className="flex min-w-0 flex-col gap-6">{children}</div>
-    </div>
-  );
+  return <div className="mx-auto flex w-full min-w-0 max-w-[1104px] flex-col gap-6">{children}</div>;
 }
 
 /** Section card (Figma 44:911…): radius 16, padding 32 desktop, title H4 + subtitle. */

@@ -172,6 +172,7 @@ export class EmployerWalletService {
       case 'task_reward':
         return `${title} · ${count} approval${count === 1 ? '' : 's'}`;
       case 'platform_fee':
+        if (p.kind === 'boost') return `${title} · Boost · ${Number(p.days ?? 0)} day${Number(p.days) === 1 ? '' : 's'}`;
         return `${title} · ${count} approval${count === 1 ? '' : 's'} · ${p.percent ?? ''}%`;
       case 'job_release':
         return `${title} · ${String(p.reason ?? 'budget released')}`;
@@ -209,7 +210,7 @@ export class EmployerWalletService {
       running = running.plus(total);
       const isMove = r.type === 'job_reserve' || r.type === 'job_release';
       const amount = isMove ? na : total;
-      const groupable = !detailed && (r.type === 'job_spend' || r.type === 'platform_fee') && r.job_id;
+      const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost')) && r.job_id;
       const key = groupable ? `${r.type}:${r.job_id}:${dhakaDate(r.occurred_at)}` : r.public_ref;
       let g = groupable ? open.get(key) : undefined;
       if (!g) {

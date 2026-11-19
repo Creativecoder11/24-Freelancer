@@ -88,7 +88,7 @@ function StatusBox({ tone, icon, title, children, action }: { tone: 'success' | 
   );
 }
 
-function KycWizard({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function KycWizard({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
   const [step, setStep] = useState(1);
   const [docType, setDocType] = useState<KycDocumentType>('national_id');
@@ -147,6 +147,7 @@ function KycWizard({ open, onOpenChange }: { open: boolean; onOpenChange: (o: bo
       void qc.invalidateQueries({ queryKey: wal.kyc });
       void qc.invalidateQueries({ queryKey: ['me'] });
       void qc.invalidateQueries({ queryKey: wal.summary });
+      void qc.invalidateQueries({ queryKey: ['worker'] }); // job pages unlock "Start job" after submission
       setStep(4);
     } catch (e) {
       if (e instanceof ApiError && Object.keys(e.fields).length) {

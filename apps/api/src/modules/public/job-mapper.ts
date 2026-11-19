@@ -22,7 +22,13 @@ export interface JobRowRaw {
   slots_left: number;
   published_at: Date | null;
   ends_at: Date | null;
+  /** Paid boost running (see BOOSTED_SQL). */
+  is_boosted?: boolean;
 }
+
+/** Shared SQL bits for live listings (change request Nov 2026). */
+export const BOOSTED_SQL = 'j.boosted_until IS NOT NULL AND j.boosted_until > now()';
+export const STARTED_SQL = 'j.starts_at IS NULL OR j.starts_at <= now()';
 
 export function toJobCard(r: JobRowRaw, newBadgeMinutes: number): JobCard {
   const published = r.published_at ? new Date(r.published_at) : null;
@@ -41,5 +47,6 @@ export function toJobCard(r: JobRowRaw, newBadgeMinutes: number): JobCard {
     slots_left: r.slots_left,
     published_at: published?.toISOString() ?? null,
     ends_at: r.ends_at ? new Date(r.ends_at).toISOString() : null,
+    is_boosted: !!r.is_boosted,
   };
 }

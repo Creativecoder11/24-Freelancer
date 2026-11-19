@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, type Job } from '@24f/db';
 import Decimal from 'decimal.js';
+import { jobZone, zoneTargetCountries } from '@24f/shared';
 import { ApiError } from '../../common/api-error';
 import { Paged } from '../../common/envelope.interceptor';
 import { SettingsService } from '../settings/settings.service';
+import { UploadsService } from '../uploads/uploads.service';
 import {
   EmployerCore,
   allowedActions,
@@ -21,8 +23,10 @@ import {
   type Tx,
 } from '../employer/employer-common';
 import {
+  MAX_SCREENSHOTS,
   TIME_MINUTES,
   firstIncompleteStep,
+  isKnownCountry,
   proofLabel,
   screenContent,
   validateStep,
@@ -40,9 +44,13 @@ const DEFAULT_RULES = {
 };
 
 /** Fields that lock at the first submission (Doc 04 §5.8, VR-091). */
-const LOCKABLE: Record<string, keyof Job | 'steps' | 'proof_requirements'> = {
+const LOCKABLE: Record<string, keyof Job | 'steps' | 'proof_requirements' | 'subcategory' | 'excluded_countries'> = {
   title: 'title',
   category: 'categoryId',
+  subcategory: 'subcategory',
+  target_zone: 'targetZone',
+  excluded_countries: 'excluded_countries',
+  note: 'note',
   time_per_task: 'timePerTask',
   eligibility: 'eligibility',
   min_approval_rate: 'minApprovalRate',
@@ -70,6 +78,7 @@ export class JobsService {
   constructor(
     private readonly core: EmployerCore,
     private readonly settings: SettingsService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private get db() {
@@ -87,18 +96,30 @@ export class JobsService {
       minApprovalRates: await s.get<number[]>('min_approval_rate_options', [0, 60, 70, 80, 90, 95]),
       reviewWindows: await s.get<number[]>('review_window_options_hours', [24, 48, 72]),
       shorteners: await s.get<string[]>('url_shortener_domains', []),
+      minSpendUsd: String(await s.get('job_min_spend_usd', '0.80')),
+      boostDaysOptions: await s.get<number[]>('boost_days_options', [1, 3, 7]),
+      boostPricePerDayUsd: String(await s.get('boost_price_per_day_usd', '0.50')),
+      scheduleMaxDays: await s.number('job_schedule_max_days', 30),
     };
   }
 
   private async full(id: string, tx: Tx = this.db): Promise<JobFull> {
-    return tx.job.findUniqueOrThrow({
+    const j = await tx.job.findUniqueOrThrow({
       where: { id },
       include: {
         jobSteps: { orderBy: { position: 'asc' } },
         jobProofRequirements: { orderBy: { position: 'asc' } },
         category: { select: { slug: true, name: true } },
+        subcategory: { select: { slug: true, name: true } },
       },
-    }) as Promise<JobFull>;
+    });
+    const categorySubcount = j.categoryId ? await tx.subcategory.count({ where: { categoryId: j.categoryId, isActive: true } }) : 0;
+    return { ...j, categorySubcount } as JobFull;
+  }
+
+  /** Boost fee for a number of days at the current price (0 days = no boost). */
+  boostFee(days: number, lim: JobLimits) {
+    return days > 0 ? new Decimal(lim.boostPricePerDayUsd).mul(days) : new Decimal(0);
   }
 
   private async newPublicId(tx: Tx) {
@@ -135,6 +156,16 @@ export class JobsService {
       version: j.version,
       title: j.title,
       category: j.category ? { slug: j.category.slug, name: j.category.name } : null,
+      subcategory: j.subcategory ? { slug: j.subcategory.slug, name: j.subcategory.name } : null,
+      target_zone: j.targetZone,
+      excluded_countries: j.excludedCountries,
+      note: j.note,
+      thumbnail_upload_id: j.thumbnailUploadId,
+      thumbnail_url: j.thumbnailUploadId ? this.uploads.signedUrl(j.thumbnailUploadId, 'full') : null,
+      starts_at: j.startsAt?.toISOString() ?? null,
+      boost_days: j.boostDays,
+      boost_fee_usd: usd2(j.boostFeeUsd),
+      boosted_until: j.boostedUntil?.toISOString() ?? null,
       time_per_task: j.timePerTask,
       open_for_days: j.openForDays,
       eligibility: j.eligibility,
@@ -214,7 +245,7 @@ export class JobsService {
       const unit = j.status === 'draft' ? dec(j.rewardUsd).plus(feeFor(dec(j.rewardUsd), feeNow)) : unitCost(j);
       return {
         public_id: j.publicId,
-        title: j.title,
+        title: j.title.trim() || 'Untitled draft',
         category: j.category,
         status: j.status,
         pause_reason: j.pauseReason,
@@ -258,8 +289,9 @@ export class JobsService {
   async create(userId: string, body: JobWrite) {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true } });
     if (user.status === 'suspended' || user.status === 'closed') throw new ApiError('ACCOUNT_SUSPENDED');
-    if ([...(body.title ?? '').trim()].length < 10 || [...(body.title ?? '').trim()].length > 80)
-      throw new ApiError('VALIDATION_FAILED', undefined, { title: ['Use 10–80 characters for the title.'] });
+    // The wizard starts with Location, so a draft may not have a title yet (set in step 3).
+    const tl = [...(body.title ?? '').trim()].length;
+    if (tl > 0 && (tl < 10 || tl > 80)) throw new ApiError('VALIDATION_FAILED', undefined, { title: ['Use 10–80 characters for the title.'] });
     const profile = await this.core.ensureProfile(userId);
     await this.core.accounts(userId);
     const created = await this.db.$transaction(async (tx) => {
@@ -288,7 +320,11 @@ export class JobsService {
     // The database enforces these ranges even on drafts, so check each sent field first.
     const lim = await this.limits();
     const errs: Record<string, string[]> = {};
-    if (b.title !== undefined && ([...(b.title ?? '').trim()].length < 10 || [...(b.title ?? '').trim()].length > 80)) errs.title = ['Use 10–80 characters for the title.'];
+    if (b.title !== undefined) {
+      const tl = [...(b.title ?? '').trim()].length;
+      // Drafts may clear the title; published jobs always keep a 10–80 character one.
+      if ((tl > 0 || job.status !== 'draft') && (tl < 10 || tl > 80)) errs.title = ['Use 10–80 characters for the title.'];
+    }
     if (b.open_for_days !== undefined && job.status === 'draft' && !lim.openForDays.includes(b.open_for_days)) errs.open_for_days = ['Choose how long the job stays open.'];
     if (b.min_approval_rate !== undefined && !lim.minApprovalRates.includes(b.min_approval_rate)) errs.min_approval_rate = ['Choose a minimum approval rate.'];
     if (b.review_window_hours !== undefined && !lim.reviewWindows.includes(b.review_window_hours)) errs.review_window_hours = ['Choose 24, 48 or 72 hours.'];
@@ -300,17 +336,53 @@ export class JobsService {
       if (!ok) errs.reward_usd = [`Enter a reward between $${new Decimal(lim.rewardMin).toFixed(3)} and $${new Decimal(lim.rewardMax).toFixed(3)}.`];
     }
     if (b.task_link_url && b.task_link_url.trim() && !/^https:\/\/\S+$/i.test(b.task_link_url.trim())) errs.task_link_url = ['Enter a full link starting with https://.'];
+    if (b.target_zone !== undefined && !jobZone(b.target_zone)) errs.target_zone = ['Choose where workers can be.'];
+    if (b.excluded_countries?.some((c) => !isKnownCountry(c.toUpperCase()))) errs.excluded_countries = ['Pick countries from the list.'];
+    if (b.note && [...b.note.trim()].length > 300) errs.note = ['Keep the note under 300 characters.'];
+    if (b.boost_days !== undefined && b.boost_days !== 0 && !lim.boostDaysOptions.includes(b.boost_days)) errs.boost_days = ['Choose a boost period.'];
+    if ((b.boost_days !== undefined || b.starts_at !== undefined) && job.status !== 'draft') {
+      // Boost is charged and the start time fixed at publish.
+      if (b.boost_days !== undefined && b.boost_days !== job.boostDays) errs.boost_days = ['Boost can only be set before publishing.'];
+      if (b.starts_at !== undefined && (b.starts_at ? new Date(b.starts_at).getTime() : null) !== (job.startsAt?.getTime() ?? null)) errs.starts_at = ['The start time can only be set before publishing.'];
+    }
+    if (b.proof_requirements && b.proof_requirements.filter((p) => p.proof_type === 'screenshot').length > MAX_SCREENSHOTS) errs.proof_requirements = [`Ask for at most ${MAX_SCREENSHOTS} screenshots.`];
     if (Object.keys(errs).length) throw new ApiError('VALIDATION_FAILED', undefined, errs);
     const data: Prisma.JobUncheckedUpdateInput = {};
     if (b.title !== undefined) data.title = (b.title ?? '').trim().slice(0, 80);
+    let categoryId = job.categoryId;
     if (b.category !== undefined) {
-      if (b.category === null || b.category === '') data.categoryId = null;
+      if (b.category === null || b.category === '') data.categoryId = categoryId = null;
       else {
         const cat = await tx.category.findUnique({ where: { slug: b.category } });
         if (!cat || !cat.isActive) throw new ApiError('VALIDATION_FAILED', undefined, { category: ['Choose a category.'] });
-        data.categoryId = cat.id;
+        data.categoryId = categoryId = cat.id;
+      }
+      // A new category clears a subcategory that belongs to another one.
+      if (b.subcategory === undefined && categoryId !== job.categoryId) data.subcategoryId = null;
+    }
+    if (b.subcategory !== undefined) {
+      if (!b.subcategory) data.subcategoryId = null;
+      else {
+        const sub = await tx.subcategory.findUnique({ where: { slug: b.subcategory } });
+        if (!sub || !sub.isActive || sub.categoryId !== categoryId) throw new ApiError('VALIDATION_FAILED', undefined, { subcategory: ['Choose a subcategory of this category.'] });
+        data.subcategoryId = sub.id;
       }
     }
+    if (b.target_zone !== undefined) {
+      data.targetZone = b.target_zone;
+      data.targetCountries = zoneTargetCountries(b.target_zone);
+    }
+    if (b.excluded_countries !== undefined) data.excludedCountries = [...new Set(b.excluded_countries.map((c) => c.toUpperCase()))].sort();
+    if (b.note !== undefined) data.note = b.note?.trim().slice(0, 300) || null;
+    if (b.thumbnail_upload_id !== undefined) {
+      if (b.thumbnail_upload_id) {
+        await this.uploads.requireReady(tx, job.employerUserId, b.thumbnail_upload_id, ['job_thumbnail'], 'thumbnail_upload_id');
+        await this.uploads.markClaimed(tx, [b.thumbnail_upload_id]);
+      }
+      data.thumbnailUploadId = b.thumbnail_upload_id || null;
+    }
+    if (b.boost_days !== undefined && job.status === 'draft') data.boostDays = b.boost_days;
+    if (b.starts_at !== undefined && job.status === 'draft') data.startsAt = b.starts_at ? new Date(b.starts_at) : null;
     if (b.time_per_task) {
       data.timePerTask = b.time_per_task;
       data.estMinutes = TIME_MINUTES[b.time_per_task];
@@ -341,8 +413,13 @@ export class JobsService {
       if (steps.length) await tx.jobStep.createMany({ data: steps.map((body, i) => ({ jobId: job.id, position: i + 1, body: body.slice(0, 300) })) });
     }
     if (b.proof_requirements) {
+      // One entry per proof type, except screenshots: N entries = N screenshots per submission.
       const seen = new Set<string>();
-      const reqs = b.proof_requirements.filter((p) => (seen.has(p.proof_type) ? false : (seen.add(p.proof_type), true)));
+      let shots = 0;
+      const reqs = b.proof_requirements.filter((p) => {
+        if (p.proof_type === 'screenshot') return ++shots <= MAX_SCREENSHOTS;
+        return seen.has(p.proof_type) ? false : (seen.add(p.proof_type), true);
+      });
       await tx.jobProofRequirement.deleteMany({ where: { jobId: job.id } });
       if (reqs.length)
         await tx.jobProofRequirement.createMany({
@@ -356,7 +433,7 @@ export class JobsService {
             isRequired: p.is_required ?? true,
           })),
         });
-      data.proofTypes = reqs.map((p) => p.proof_type);
+      data.proofTypes = [...new Set(reqs.map((p) => p.proof_type))];
     }
     if (Object.keys(data).length || b.steps || b.proof_requirements) {
       await tx.job.update({ where: { id: job.id }, data: { ...data, version: { increment: 1 } } });
@@ -383,6 +460,12 @@ export class JobsService {
         switch (k) {
           case 'category':
             return v !== (before.category?.slug ?? null);
+          case 'subcategory':
+            return (v || null) !== (before.subcategory?.slug ?? null);
+          case 'excluded_countries':
+            return JSON.stringify([...new Set((v as string[]).map((c) => c.toUpperCase()))].sort()) !== JSON.stringify(before.excludedCountries);
+          case 'note':
+            return ((v as string | null)?.trim() || null) !== before.note;
           case 'steps':
             return JSON.stringify((v as { body: string }[]).map((s) => s.body.trim())) !== JSON.stringify(before.jobSteps.map((s) => s.body));
           case 'proof_requirements':
@@ -425,11 +508,11 @@ export class JobsService {
 
       // Step validation for the step being saved.
       const after = await this.full(job.id, tx);
-      if (b.wizard_step && b.wizard_step <= 3) {
+      if (b.wizard_step && b.wizard_step <= 4) {
         const errs = validateStep(b.wizard_step, after, lim);
         if (Object.keys(errs).length) throw new ApiError('VALIDATION_FAILED', undefined, errs);
       } else if (published) {
-        for (const s of [1, 2, 3]) {
+        for (const s of [1, 2, 3, 4]) {
           const errs = validateStep(s, after, lim);
           if (Object.keys(errs).length) throw new ApiError('VALIDATION_FAILED', undefined, errs);
         }
@@ -498,7 +581,7 @@ export class JobsService {
     return blockers;
   }
 
-  async quote(userId: string, publicId: string, body: { reward_usd?: string; slots_total?: number }) {
+  async quote(userId: string, publicId: string, body: { reward_usd?: string; slots_total?: number; boost_days?: number }) {
     const own = await this.core.ownJob(userId, publicId);
     const j = await this.full(own.id);
     const lim = await this.limits();
@@ -508,15 +591,27 @@ export class JobsService {
     const fee = feeFor(reward, feePercent);
     const unit = reward.plus(fee);
     const total = unit.mul(slots);
+    // Boost is a one-off charge at publish (drafts only; a published job shows what it paid).
+    const boostDays = j.status === 'draft' ? (body.boost_days !== undefined && (body.boost_days === 0 || lim.boostDaysOptions.includes(body.boost_days)) ? body.boost_days : j.boostDays) : j.boostDays;
+    const boostFee = j.status === 'draft' ? this.boostFee(boostDays, lim) : dec(j.boostFeeUsd);
+    const due = j.status === 'draft' ? total.plus(boostFee) : total;
     const { available } = await this.core.balances(userId);
     const receivable = (await this.db.employerProfile.findUnique({ where: { userId }, select: { receivableUsd: true } }))?.receivableUsd;
-    const shortfall = Decimal.max(0, total.minus(available));
+    const shortfall = Decimal.max(0, due.minus(available));
     const blockers = await this.gates(userId);
     if (shortfall.gt(0)) blockers.push('insufficient_balance');
     if (dec(receivable).gt(0)) blockers.push('receivable_outstanding');
+    const belowMin = slots > 0 && reward.gt(0) && reward.mul(slots).lt(lim.minSpendUsd);
+    if (belowMin) blockers.push('below_min_spend');
     const incomplete = firstIncompleteStep({ ...j, rewardUsd: new Prisma.Decimal(reward.toFixed(6)), slotsTotal: slots }, lim);
     if (incomplete) blockers.push('job_incomplete');
     return {
+      boost_days: boostDays,
+      boost_fee_usd: usd2(boostFee),
+      boost_price_per_day_usd: usd2(lim.boostPricePerDayUsd),
+      total_due_usd: usd2(due),
+      min_spend_usd: usd2(lim.minSpendUsd),
+      below_min_spend: belowMin,
       reward_usd: usd3(reward),
       slots_total: slots,
       fee_per_task_usd: usd3(fee),
@@ -527,7 +622,7 @@ export class JobsService {
       total_reserved_usd: usd2(total),
       total_reserved_exact_usd: total.toFixed(6),
       available_usd: usd2(available),
-      available_after_usd: usd2(available.minus(total)),
+      available_after_usd: usd2(available.minus(due)),
       deposit_balance_usd: usd2((await this.core.balances(userId)).total),
       shortfall_usd: usd2Up(shortfall),
       can_publish: blockers.length === 0,
@@ -536,7 +631,7 @@ export class JobsService {
     };
   }
 
-  async publish(userId: string, publicId: string, body: { posting_rules_accepted?: boolean; expected_total_reserved_usd?: string }) {
+  async publish(userId: string, publicId: string, body: { posting_rules_accepted?: boolean; expected_total_reserved_usd?: string; expected_boost_fee_usd?: string }) {
     const own = await this.core.ownJob(userId, publicId);
     const lim = await this.limits();
     const gates = await this.gates(userId);
@@ -568,9 +663,12 @@ export class JobsService {
       const total = unit.mul(job.slotsTotal ?? 0);
       if (body.expected_total_reserved_usd === undefined || !this.sameAmount(body.expected_total_reserved_usd, total))
         throw new ApiError('QUOTE_CHANGED', undefined, undefined, { total_reserved_usd: usd2(total) });
+      const boostFee = this.boostFee(job.boostDays, lim);
+      if (boostFee.gt(0) && (body.expected_boost_fee_usd === undefined || !this.sameAmount(body.expected_boost_fee_usd, boostFee)))
+        throw new ApiError('QUOTE_CHANGED', 'The boost price changed. Check the new total and publish again.', undefined, { total_reserved_usd: usd2(total), boost_fee_usd: usd2(boostFee) });
       const acc = await this.core.lockAccounts(userId, tx);
-      if (acc.availableBal.lt(total)) {
-        const short = total.minus(acc.availableBal);
+      if (acc.availableBal.lt(total.plus(boostFee))) {
+        const short = total.plus(boostFee).minus(acc.availableBal);
         throw new ApiError('INSUFFICIENT_BALANCE', `You need $${usd2Up(short)} more to publish. Add funds or lower the slots or reward.`, undefined, {
           shortfall_usd: usd2Up(short),
           available_usd: usd2(acc.availableBal),
@@ -585,7 +683,28 @@ export class JobsService {
         { title: job.title, slots: job.slotsTotal, reward: usd3(job.rewardUsd), ...(feePercent > 0 ? { fee_percent: String(feePercent) } : {}) },
         { userId },
       );
+      // Paid boost: one-off platform fee from the available balance (not refunded on pause or close).
+      if (boostFee.gt(0)) {
+        const revenue = await this.core.ledger.systemAccount('platform_revenue', tx);
+        await this.core.ledger.post(
+          {
+            type: 'platform_fee',
+            idempotencyKey: `job:${job.publicId}:boost`,
+            actor: 'user',
+            userId,
+            description: { title: job.title, kind: 'boost', days: job.boostDays },
+            refs: { jobId: job.id },
+            lines: [
+              { accountId: acc.available.id, amount: boostFee.neg().toFixed(6) },
+              { accountId: revenue.id, amount: boostFee.toFixed(6) },
+            ],
+          },
+          tx,
+        );
+      }
       const now = new Date();
+      // Scheduled jobs go live at starts_at (listings hide them until then); otherwise now.
+      const liveAt = job.startsAt && job.startsAt > now ? job.startsAt : now;
       await tx.job.update({
         where: { id: job.id },
         data: {
@@ -594,13 +713,16 @@ export class JobsService {
           pausedAt: preMode ? now : null,
           platformFeePercent: new Prisma.Decimal(feePercent),
           feePerTaskUsd: new Prisma.Decimal(fee.toFixed(6)),
-          publishedAt: now,
-          endsAt: new Date(now.getTime() + job.openForDays * DAY),
+          publishedAt: liveAt,
+          startsAt: job.startsAt && job.startsAt > now ? job.startsAt : null,
+          endsAt: new Date(liveAt.getTime() + job.openForDays * DAY),
+          boostFeeUsd: new Prisma.Decimal(boostFee.toFixed(6)),
+          boostedUntil: job.boostDays > 0 ? new Date(liveAt.getTime() + job.boostDays * DAY) : null,
           postingRulesAcceptedAt: now,
           rules: (job.rules ?? DEFAULT_RULES) as Prisma.InputJsonValue,
           moderationFlags: screen.result === 'flag' ? (screen.hits as Prisma.InputJsonValue) : Prisma.JsonNull,
           moderationFlaggedAt: screen.result === 'flag' ? now : null,
-          wizardStep: 4,
+          wizardStep: 5,
           version: { increment: 1 },
         },
       });
@@ -616,6 +738,8 @@ export class JobsService {
         published_at: fresh.publishedAt!.toISOString(),
         ends_at: fresh.endsAt!.toISOString(),
         total_reserved_usd: usd2(total),
+        boost_fee_usd: usd2(boostFee),
+        starts_at: fresh.startsAt?.toISOString() ?? null,
         ledger_ref: t?.publicRef ?? null,
         available_after_usd: usd2(after.available),
         title: fresh.title,
@@ -936,8 +1060,24 @@ export class JobsService {
   }
 
   async categories() {
-    const rows = await this.db.category.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' }, select: { slug: true, name: true } });
+    const rows = await this.db.category.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { slug: true, name: true, subcategories: { where: { isActive: true }, orderBy: { sortOrder: 'asc' }, select: { slug: true, name: true } } },
+    });
     return rows;
+  }
+
+  /** Wizard settings that come from platform settings (admin-editable). */
+  async options() {
+    const lim = await this.limits();
+    return {
+      min_spend_usd: usd2(lim.minSpendUsd),
+      boost_price_per_day_usd: usd2(lim.boostPricePerDayUsd),
+      boost_days_options: lim.boostDaysOptions,
+      schedule_max_days: lim.scheduleMaxDays,
+      open_for_days_options: lim.openForDays,
+    };
   }
 
   shortTitle = shortTitle;

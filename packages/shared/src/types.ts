@@ -215,6 +215,8 @@ export interface JobCard {
   slots_left: number;
   published_at: string | null;
   ends_at: string | null;
+  /** Paid boost running: pinned above other jobs and shown as "Top job". */
+  is_boosted?: boolean;
 }
 
 export interface JobDetailPublic {
@@ -234,6 +236,9 @@ export interface JobDetailPublic {
   published_at: string | null;
   ends_at: string | null;
   steps: { position: number; body: string }[];
+  /** Employer note shown above the steps. */
+  note?: string | null;
+  thumbnail_url?: string | null;
   proof_requirements: { position: number; proof_type: ProofType; title: string; helper: string | null }[];
   rules: { allowed: string[]; not_allowed: string[] };
   terms: { review_window_hours: number; auto_approve: boolean; allow_resubmission: boolean; rejections_need_reason: boolean };

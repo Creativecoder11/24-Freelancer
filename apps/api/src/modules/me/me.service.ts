@@ -17,6 +17,7 @@ import { getEnv } from '../../config/env';
 import { PrismaService } from '../../common/prisma.service';
 import { RedisService } from '../../common/redis.service';
 import { ApiError } from '../../common/api-error';
+import { OtpService } from '../auth/otp.service';
 import { PasswordService } from '../auth/password.service';
 import { SessionService } from '../auth/session.service';
 import { nextPathFor, overviewPath, ProfilesService } from '../auth/profiles.service';
@@ -38,7 +39,37 @@ export class MeService {
     private readonly sessions: SessionService,
     private readonly profiles: ProfilesService,
     private readonly uploads: UploadsService,
+    private readonly otp: OtpService,
   ) {}
+
+  // ----- contact verification for a signed-in user (job page "Verify now") -----
+
+  /** Sends a 6-digit code to the account's email (or phone). Already verified → `{ verified: true }`. */
+  async startVerification(id: string, ip: string | null) {
+    const u = await this.user(id);
+    if (u.emailVerifiedAt || u.phoneVerifiedAt) return { verified: true as const };
+    const destination = u.email ?? u.phoneE164;
+    if (!destination) throw new ApiError('INVALID_STATE', 'Add an email or phone number to your account first.');
+    if (!getEnv().AUTH_OTP_ENABLED) {
+      // OTP switched off (same rule as sign-up): treat the contact as verified.
+      await this.prisma.db.user.update({ where: { id }, data: u.email ? { emailVerifiedAt: new Date() } : { phoneVerifiedAt: new Date() } });
+      return { verified: true as const };
+    }
+    const c = await this.otp.issue({ userId: id, purpose: 'contact_change', destination, ip });
+    return { verified: false as const, ...OtpService.toResponse(c) };
+  }
+
+  async confirmVerification(id: string, dto: { challenge_id: string; code: string }) {
+    const owned = await this.prisma.db.otpChallenge.findUnique({ where: { id: dto.challenge_id }, select: { userId: true, purpose: true } });
+    if (!owned || owned.userId !== id || owned.purpose !== 'contact_change') throw new ApiError('OTP_EXPIRED', 'This code expired. Request a new one.', undefined, { reason: 'expired' });
+    const c = await this.otp.verify(dto.challenge_id, dto.code);
+    const now = new Date();
+    await this.prisma.db.user.update({
+      where: { id },
+      data: c.destination.startsWith('+') ? { phoneVerifiedAt: now, updatedAt: now } : { emailVerifiedAt: now, updatedAt: now },
+    });
+    return { verified: true as const };
+  }
 
   private async user(id: string) {
     const u = await this.prisma.db.user.findUnique({ where: { id } });

@@ -40,7 +40,6 @@ export function appNav(mode: AppMode, badges: { tasks?: number; submissions?: nu
         { label: 'Wallet', href: '/worker/wallet', icon: 'wallet' },
         { label: 'Referral', href: '/worker/referral', icon: 'gift' },
         { label: 'Notifications', href: '/worker/notifications', icon: 'bell', badge: badges.notifications },
-        { label: 'Settings', href: '/worker/settings', icon: 'settings' },
       ]
     : [
         { label: 'Overview', href: '/employer', icon: 'dashboard', exact: true },
@@ -49,7 +48,6 @@ export function appNav(mode: AppMode, badges: { tasks?: number; submissions?: nu
         { label: 'Submissions', href: '/employer/submissions', icon: 'inbox', badge: badges.submissions },
         { label: 'Wallet', href: '/employer/wallet', icon: 'wallet' },
         { label: 'Notifications', href: '/employer/notifications', icon: 'bell', badge: badges.notifications },
-        { label: 'Settings', href: '/employer/settings', icon: 'settings' },
       ];
 }
 
@@ -109,14 +107,25 @@ export function Sidebar({ mode, items, user, onLogout, className, onNavigate }: 
             Open live support
           </NextLink>
         </div>
-        <div className="flex items-center gap-3 border-t border-line-subtle px-1 pt-4">
-          <Avatar initials={user.initials} src={user.avatarUrl} size="M" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-label-md text-fg">{user.name}</p>
-            <p className="truncate text-body-xs text-fg-tertiary">
-              {mode === 'worker' ? 'Worker' : 'Employer'} · ID {user.publicId}
-            </p>
-          </div>
+        <div className="flex items-center gap-2 border-t border-line-subtle pt-4">
+          {/* Name + avatar open the profile page (profile, payouts, security, notifications). */}
+          <NextLink
+            href={`${mode === 'worker' ? '/worker' : '/employer'}/settings`}
+            onClick={onNavigate}
+            aria-current={pathname.startsWith(`/${mode}/settings`) ? 'page' : undefined}
+            className={cn(
+              'flex min-w-0 flex-1 items-center gap-3 rounded-[10px] p-1 transition-colors hover:bg-subtle focus-visible:shadow-focus focus-visible:outline-none',
+              pathname.startsWith(`/${mode}/settings`) && 'bg-brand-subtle',
+            )}
+          >
+            <Avatar initials={user.initials} src={user.avatarUrl} size="M" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-label-md text-fg">{user.name}</span>
+              <span className="block truncate text-body-xs text-fg-tertiary">
+                {mode === 'worker' ? 'Worker' : 'Employer'} · ID {user.publicId}
+              </span>
+            </span>
+          </NextLink>
           <IconButton icon="log-out" aria-label="Log out" variant="ghost" size="S" onClick={onLogout} />
         </div>
       </div>
@@ -142,7 +151,7 @@ export function Topbar({ title, subtitle, balance, mode, unread, user, onLogout,
   const base = mode === 'worker' ? '/worker' : '/employer';
   const other = mode === 'worker' ? 'employer' : 'worker';
   return (
-    <header className="sticky top-0 z-[var(--fl-z-sticky)] border-b border-line-subtle bg-canvas/90 backdrop-blur">
+    <header className="sticky top-0 z-[var(--fl-z-sticky)] border-b border-line-subtle bg-surface/90 backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-5 tablet:h-[72px] tablet:px-8 desktop:h-[76px] desktop:px-10">
         {onOpenMenu ? (
           <span className="hidden tablet:block desktop:hidden">
@@ -176,6 +185,14 @@ export function Topbar({ title, subtitle, balance, mode, unread, user, onLogout,
             </NextLink>
           ) : null}
           <IconButton icon="bell" aria-label={unread ? 'Notifications, unread' : 'Notifications'} variant="secondary" dot={unread} href={`${base}/notifications`} tooltip={false} />
+          {/* Unique account ID — easy to read out or copy for support and referrals. */}
+          <span
+            title="Your account ID"
+            className="inline-flex h-9 select-all items-center gap-1 whitespace-nowrap rounded-full border border-line px-3 text-label-sm tabular-nums text-fg"
+          >
+            <span className="text-fg-tertiary">ID</span>
+            {user.publicId}
+          </span>
           <ActionMenu
             label="Account"
             trigger={
@@ -277,7 +294,7 @@ export function AppShell({ mode, user, badges, onLogout, header, children, hideT
   );
 
   return (
-    <div className="min-h-dvh bg-canvas desktop:pl-[var(--fl-sidebar)]">
+    <div className="min-h-dvh bg-surface desktop:pl-[var(--fl-sidebar)]">
       <aside className="fixed inset-y-0 left-0 z-[var(--fl-z-sidebar)] hidden w-[var(--fl-sidebar)] overflow-y-auto overscroll-contain border-r border-line-subtle bg-surface desktop:block">
         <Sidebar mode={mode} items={items} user={user} onLogout={onLogout} />
       </aside>

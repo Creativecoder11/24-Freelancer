@@ -60,7 +60,7 @@ export function defaultHeader(pathname: string, me: Me): WorkerHeader {
   if (p === '/worker/notifications') return { title: 'Notifications', subtitle: SUB.notifications };
   if (p.startsWith('/worker/wallet')) return { title: 'Wallet' };
   if (p.startsWith('/worker/referral')) return { title: 'Referral' };
-  if (p.startsWith('/worker/settings')) return { title: 'Settings' };
+  if (p.startsWith('/worker/settings')) return { title: 'Profile' };
   return { title: 'Worker' };
 }
 

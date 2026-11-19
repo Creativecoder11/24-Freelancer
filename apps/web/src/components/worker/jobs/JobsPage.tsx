@@ -6,9 +6,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { formatCount } from '@24f/shared';
-import { Alert, Button, EmptyState, FilterChip, FilterChipGroup, Icon, JobCard, Pagination, Search, Select, Skeleton, cn, useStaggerIn } from '@24f/ui';
+import { Alert, Button, EmptyState, FilterChip, FilterChipGroup, Icon, JobRow, Pagination, Search, Select, Skeleton, cn, useStaggerIn } from '@24f/ui';
 import { useMe } from '@/lib/auth/session';
-import { toCardData } from '@/lib/jobs';
+import { toRowData } from '@/lib/jobs';
 import { useWorkerJobs } from '../data';
 import { LoadError } from '../ui';
 import { FiltersDrawer } from './FiltersDrawer';
@@ -45,7 +45,7 @@ export function JobsPage() {
   const data = q.data;
   const counts = data?.meta.counts;
   const total = data?.meta.total ?? 0;
-  const gridRef = useStaggerIn<HTMLDivElement>([apiQs, data?.data.length ?? 0]);
+  const listRef = useStaggerIn<HTMLUListElement>([apiQs, data?.data.length ?? 0]);
   const hasInterests = (me.data?.interests.length ?? 1) > 0;
   const nActive = activeCount(f);
   const filtered = nActive > 0 || !!f.q || f.chip !== 'all';
@@ -103,27 +103,30 @@ export function JobsPage() {
         <p className="text-fg-tertiary">{data ? ago(data.at, now) : ''}</p>
       </div>
 
-      {/* Grid */}
+      {/* List */}
       <div className="mt-4">
         {q.isError && !data ? (
           <LoadError error={q.error} onRetry={() => q.refetch()} title="We couldn’t load jobs" />
         ) : !data ? (
-          <div className="grid gap-4 tablet:grid-cols-2 tablet:gap-6 desktop:grid-cols-3" aria-busy="true">
-            {Array.from({ length: 9 }, (_, i) => (
-              <Skeleton.JobCard key={i} />
+          <div className="overflow-hidden rounded-card border border-line bg-surface shadow-xs [&>*:last-child]:border-b-0" aria-busy="true">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Skeleton.JobRow key={i} />
             ))}
           </div>
         ) : data.data.length ? (
-          <div ref={gridRef} className={cn('grid gap-4 tablet:grid-cols-2 tablet:gap-6 desktop:grid-cols-3', q.isFetching && q.isPlaceholderData && 'opacity-60')}>
+          <ul
+            ref={listRef}
+            className={cn('divide-y divide-line-subtle overflow-hidden rounded-card border border-line bg-surface shadow-xs', q.isFetching && q.isPlaceholderData && 'opacity-60')}
+          >
             {data.data.map((j) => (
-              <JobCard
+              <JobRow
                 key={j.public_id}
-                job={toCardData(j, now)}
+                job={toRowData(j, now)}
                 href={`/worker/jobs/${j.public_id}`}
-                ctaLabel={j.my_state === 'in_progress' ? 'Continue' : j.my_state === 'done' ? 'View task' : 'View job'}
+                ctaLabel={j.my_state === 'in_progress' ? 'Continue' : j.my_state === 'done' ? 'View task' : 'View'}
               />
             ))}
-          </div>
+          </ul>
         ) : (
           <div className="rounded-card border border-line bg-surface">
             {f.chip === 'for_you' && nActive === 0 && !f.q ? (

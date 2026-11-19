@@ -12,7 +12,8 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { ApiError } from '../../common/api-error';
-import { proofLabel, toJobCard, type JobRowRaw } from './job-mapper';
+import { UploadsService } from '../uploads/uploads.service';
+import { BOOSTED_SQL, STARTED_SQL, proofLabel, toJobCard, type JobRowRaw } from './job-mapper';
 
 /** A-53 filter buckets on est_minutes. */
 const BUCKET_MINUTES: Record<string, number[]> = { under_5: [2, 5], '5_15': [10, 15], over_15: [30, 60] };
@@ -36,9 +37,12 @@ export class PublicService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly uploads: UploadsService,
   ) {}
 
-  private liveWhere = Prisma.sql`j.status = 'running' AND j.ends_at > now() AND j.deleted_at IS NULL AND c.is_public`;
+  // Scheduled jobs stay hidden until starts_at. Public pages show every location (workers are filtered).
+  private liveWhere = Prisma.sql`j.status = 'running' AND j.ends_at > now() AND j.deleted_at IS NULL AND c.is_public AND (${Prisma.raw(STARTED_SQL)})`;
+  private boostedFirst = Prisma.sql`(${Prisma.raw(BOOSTED_SQL)}) DESC`;
 
   private filterSql(q: Partial<PublicJobsQuery>, skip: 'category' | null = null) {
     const parts: Prisma.Sql[] = [this.liveWhere];
@@ -55,7 +59,7 @@ export class PublicService {
 
   private selectCols = Prisma.sql`j.public_id, j.title, c.slug AS category_slug, c.name AS category_name, e.business_name,
     (e.employer_verified_at IS NOT NULL) AS employer_verified, j.reward_usd::text AS reward_usd, j.display_minutes,
-    j.proof_types::text[] AS proof_types, j.slots_total, j.slots_left, j.published_at, j.ends_at`;
+    j.proof_types::text[] AS proof_types, j.slots_total, j.slots_left, j.published_at, j.ends_at, (${Prisma.raw(BOOSTED_SQL)}) AS is_boosted`;
 
   private fromSql = Prisma.sql`FROM jobs j JOIN categories c ON c.id = j.category_id JOIN employer_profiles e ON e.user_id = j.employer_user_id`;
 
@@ -73,7 +77,7 @@ export class PublicService {
     const page = Math.min(q.page, totalPages);
     const rows = await db.$queryRaw<JobRowRaw[]>`
       SELECT ${this.selectCols} ${this.fromSql} WHERE ${where}
-      ORDER BY ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ORDER BY ${this.boostedFirst}, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
     return {
       data: rows.map((r) => toJobCard(r, newMin)),
       meta: { total, page, per_page: perPage, total_pages: totalPages, has_more: page < totalPages, facets, applied_filters: q },
@@ -92,6 +96,7 @@ export class PublicService {
       },
     });
     if (!job || job.status === 'draft' || job.deletedAt || job.status === 'suspended') throw new ApiError('NOT_FOUND');
+    if (job.startsAt && job.startsAt.getTime() > Date.now()) throw new ApiError('NOT_FOUND'); // scheduled
     const newMin = await this.settings.number('job_new_badge_minutes', 60);
     const emp = job.employerUser.employerProfile;
     const slotsLeft = job.slotsLeft ?? 0;
@@ -118,6 +123,8 @@ export class PublicService {
       published_at: job.publishedAt?.toISOString() ?? null,
       ends_at: job.endsAt?.toISOString() ?? null,
       steps: job.jobSteps.map((s) => ({ position: s.position, body: s.body })),
+      note: job.note,
+      thumbnail_url: job.thumbnailUploadId ? this.uploads.signedUrl(job.thumbnailUploadId, 'full') : null,
       proof_requirements: job.jobProofRequirements.map((p) => ({ position: p.position, proof_type: p.proofType as never, title: p.title, helper: p.helper })),
       rules,
       terms: { review_window_hours: job.reviewWindowHours, auto_approve: job.autoApprove, allow_resubmission: job.allowResubmission, rejections_need_reason: true },
@@ -164,7 +171,7 @@ export class PublicService {
     const countRows = await db.$queryRaw<{ slug: string; n: number }[]>`
       SELECT c.slug, count(*)::int AS n ${this.fromSql} WHERE ${this.filterSql({ q: q.q })} GROUP BY c.slug ORDER BY n DESC`;
     const rows = await db.$queryRaw<JobRowRaw[]>`
-      SELECT ${this.selectCols} ${this.fromSql} WHERE ${where} ORDER BY j.published_at DESC LIMIT ${q.per_page} OFFSET ${offset}`;
+      SELECT ${this.selectCols} ${this.fromSql} WHERE ${where} ORDER BY ${this.boostedFirst}, j.published_at DESC LIMIT ${q.per_page} OFFSET ${offset}`;
     const next = offset + rows.length < total ? Buffer.from(String(offset + rows.length)).toString('base64url') : null;
     return {
       data: rows.map((r) => toJobCard(r, newMin)),

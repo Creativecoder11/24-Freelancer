@@ -34,7 +34,7 @@ function PayoutCard() {
     >
       {added ? (
         <Alert tone="success" className="mt-8">
-          Payout method saved. You can manage it any time in Settings.
+          Payout method saved. You can manage it any time in your Profile.
         </Alert>
       ) : (
         <div className="mt-8 rounded-[14px] border border-line bg-subtle p-5">

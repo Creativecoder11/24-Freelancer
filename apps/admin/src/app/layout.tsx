@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: "if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('motion')" }} />
       </head>
-      <body className="bg-canvas">
+      <body className="bg-surface">
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

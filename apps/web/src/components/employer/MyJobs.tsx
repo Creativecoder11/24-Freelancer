@@ -188,7 +188,7 @@ export function MyJobs() {
 }
 
 function rowHref(j: JobListRow) {
-  return j.status === 'draft' ? `/employer/jobs/${j.public_id}/edit?step=${Math.min(4, Math.max(1, j.wizard_step))}` : `/employer/jobs/${j.public_id}`;
+  return j.status === 'draft' ? `/employer/jobs/${j.public_id}/edit?step=${Math.min(5, Math.max(1, j.wizard_step))}` : `/employer/jobs/${j.public_id}`;
 }
 function metaLine(j: JobListRow) {
   const cat = j.category?.name ?? 'No category';

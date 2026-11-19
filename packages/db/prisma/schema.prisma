@@ -230,8 +230,25 @@ model Category {
   updatedAt     DateTime       @default(now()) @db.Timestamptz(6) @map("updated_at")
   jobs          Job[]
   userInterests UserInterest[]
+  subcategories Subcategory[]
 
   @@map("categories")
+}
+
+model Subcategory {
+  id         String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  categoryId String   @db.Uuid @map("category_id")
+  slug       String   @unique @db.VarChar(60)
+  name       String   @db.VarChar(60)
+  sortOrder  Int      @default(0) @db.SmallInt @map("sort_order")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt  DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  jobs       Job[]
+
+  @@index([categoryId, sortOrder], map: "subcategories_category_idx")
+  @@map("subcategories")
 }
 
 model ContactMessage {
@@ -594,6 +611,16 @@ model Job {
   deletedAt               DateTime?                @db.Timestamptz(6) @map("deleted_at")
   moderationFlags         Json?                  @map("moderation_flags")
   moderationFlaggedAt     DateTime?              @db.Timestamptz(6) @map("moderation_flagged_at")
+  subcategoryId           String?                  @db.Uuid @map("subcategory_id")
+  targetZone              String                   @default("international") @db.VarChar(30) @map("target_zone")
+  targetCountries         String[]                 @default([]) @map("target_countries")
+  excludedCountries       String[]                 @default([]) @map("excluded_countries")
+  note                    String?                  @db.VarChar(300)
+  thumbnailUploadId       String?                  @db.Uuid @map("thumbnail_upload_id")
+  startsAt                DateTime?                @db.Timestamptz(6) @map("starts_at")
+  boostDays               Int                      @default(0) @db.SmallInt @map("boost_days")
+  boostFeeUsd             Decimal                  @default(0) @db.Decimal(20, 6) @map("boost_fee_usd")
+  boostedUntil            DateTime?                @db.Timestamptz(6) @map("boosted_until")
   createdAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
   updatedAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
   jobProofRequirements    JobProofRequirement[]
@@ -601,6 +628,8 @@ model Job {
   jobSteps                JobStep[]
   jobViews                JobView[]
   category                Category?                @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  subcategory             Subcategory?             @relation(fields: [subcategoryId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  thumbnailUpload         Upload?                  @relation("JobThumbnail", fields: [thumbnailUploadId], references: [id], onUpdate: NoAction)
   duplicatedFromJob       Job?                     @relation("jobsTojobs", fields: [duplicatedFromJobId], references: [id], onUpdate: NoAction)
   jobsByDuplicatedFromJob Job[]                    @relation("jobsTojobs")
   employerUser            User                     @relation(fields: [employerUserId], references: [id], onUpdate: NoAction)
@@ -610,6 +639,8 @@ model Job {
   submissions             Submission[]
 
   @@index([proofTypes], map: "jobs_proof_types_gin", type: Gin)
+  @@index([subcategoryId], map: "jobs_subcategory_idx")
+  @@index([targetCountries], map: "jobs_target_countries_gin", type: Gin)
   @@index([searchTsv], map: "jobs_search_gin", type: Gin)
   @@index([title(ops: raw("gin_trgm_ops"))], map: "jobs_title_trgm", type: Gin)
   @@map("jobs")
@@ -1163,6 +1194,7 @@ model Upload {
   kycVerificationsBySelfieUpload KycVerification[]         @relation("kyc_verifications_selfie_upload_idTouploads")
   ledgerAdjustmentRequests       LedgerAdjustmentRequest[]
   submissionProofItems           SubmissionProofItem[]
+  jobThumbnails                  Job[]                     @relation("JobThumbnail")
   ownerAdmin                     AdminUser?                @relation(fields: [ownerAdminId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "uploads_owner_admin_fk")
   ownerUser                      User?                     @relation("uploads_owner_user_idTousers", fields: [ownerUserId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "uploads_owner_user_fk")
   usersByAvatarUpload            User[]                    @relation("users_avatar_upload_idTouploads")
@@ -1909,6 +1941,7 @@ enum UploadPurpose {
   avatar
   employer_logo
   cms_image
+  job_thumbnail
 
   @@map("upload_purpose")
 }

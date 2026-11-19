@@ -37,14 +37,20 @@ function SkJobCard() {
 }
 function SkJobRow() {
   return (
-    <div aria-hidden className="flex h-[76px] items-center gap-6 border-b border-line-subtle bg-surface px-6">
-      <div className="flex-1 space-y-2">
-        <Bone width="45%" height={16} />
-        <Bone width="30%" height={12} />
+    <div aria-hidden className="@container border-b border-line-subtle bg-surface">
+      <div className="flex h-[76px] items-center gap-6 px-5 @min-[760px]:px-6">
+        <div className="min-w-0 flex-1 space-y-2">
+          <Bone width="45%" height={16} />
+          <Bone width="30%" height={12} />
+        </div>
+        <span className="hidden @min-[760px]:block">
+          <Bone width={180} height={6} radius={3} />
+        </span>
+        <Bone width={56} height={20} />
+        <span className="hidden @min-[760px]:block">
+          <Bone width={80} height={36} radius={8} />
+        </span>
       </div>
-      <Bone width={180} height={6} radius={3} />
-      <Bone width={56} height={20} />
-      <Bone width={80} height={36} radius={8} />
     </div>
   );
 }

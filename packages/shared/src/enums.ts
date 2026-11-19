@@ -589,7 +589,7 @@ export const REWARD_MIN_OPTIONS = ['0.10', '0.25', '0.50'] as const;
 export type RewardMinOption = (typeof REWARD_MIN_OPTIONS)[number];
 
 export const UPLOAD_PURPOSE = defineEnum(
-  ['proof_screenshot', 'proof_file', 'kyc_document', 'kyc_selfie', 'avatar', 'employer_logo', 'cms_image'] as const,
+  ['proof_screenshot', 'proof_file', 'kyc_document', 'kyc_selfie', 'avatar', 'employer_logo', 'cms_image', 'job_thumbnail'] as const,
   {
     proof_screenshot: 'Screenshot',
     proof_file: 'File',
@@ -598,6 +598,7 @@ export const UPLOAD_PURPOSE = defineEnum(
     avatar: 'Profile photo',
     employer_logo: 'Logo',
     cms_image: 'Content image',
+    job_thumbnail: 'Job image',
   },
 );
 export type UploadPurpose = (typeof UPLOAD_PURPOSE.values)[number];

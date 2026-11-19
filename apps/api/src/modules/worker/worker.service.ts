@@ -16,11 +16,12 @@ import {
   type WorkerJobsQuery,
   type WorkerOverview,
 } from '@24f/shared';
-import { formatMoney, formatReward } from '@24f/shared';
+import { formatMoney, formatReward, jobVisibleIn } from '@24f/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { ApiError } from '../../common/api-error';
 import { SettingsService } from '../settings/settings.service';
-import { proofLabel, toJobCard, type JobRowRaw } from '../public/job-mapper';
+import { BOOSTED_SQL, STARTED_SQL, proofLabel, toJobCard, type JobRowRaw } from '../public/job-mapper';
+import { UploadsService } from '../uploads/uploads.service';
 import { ReservationsService } from '../reservations/reservations.service';
 import { dhakaMonthBounds, employerTrust, isUniqueViolation, iso, reward3, trendPercent, usd2 } from './worker-common';
 
@@ -44,7 +45,12 @@ interface WorkerCtx {
   interests: string[];
   rate: number | null;
   kyc: KycStatus;
+  /** Profile country: jobs targeted elsewhere are hidden. */
+  country: string;
 }
+
+const BOOSTED = Prisma.raw(BOOSTED_SQL);
+const STARTED = Prisma.raw(STARTED_SQL);
 
 /** Worker jobs and overview (Doc 06 §5.6, Doc 04 §4.3). */
 @Injectable()
@@ -53,6 +59,7 @@ export class WorkerService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly reservations: ReservationsService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private async ctx(userId: string): Promise<WorkerCtx> {
@@ -66,6 +73,7 @@ export class WorkerService {
       interests: u.userInterests.map((i) => i.category.slug).filter((s) => (PUBLIC_CATEGORY_SLUGS as string[]).includes(s)),
       rate: u.workerProfile?.approvalRatePct ?? null,
       kyc: u.kycStatus as KycStatus,
+      country: u.countryCode.toUpperCase(),
     };
   }
 
@@ -79,6 +87,9 @@ export class WorkerService {
     const parts: Prisma.Sql[] = [
       Prisma.sql`j.status = 'running' AND j.ends_at > now() AND j.deleted_at IS NULL`,
       Prisma.sql`j.employer_user_id <> ${c.userId}::uuid`, // BR-022
+      Prisma.sql`(${STARTED})`, // scheduled jobs appear at starts_at
+      // Location targeting: empty target list = every country; hidden countries never see it.
+      Prisma.sql`(cardinality(j.target_countries) = 0 OR ${c.country} = ANY(j.target_countries)) AND NOT (${c.country} = ANY(j.excluded_countries))`,
     ];
     if (q.q) parts.push(Prisma.sql`(j.title ILIKE ${'%' + q.q.replace(/[%_\\]/g, '\\$&') + '%'} OR c.name ILIKE ${'%' + q.q.replace(/[%_\\]/g, '\\$&') + '%'} OR j.public_id = ${q.q.toUpperCase()})`);
     if (!skip.includes('chip') && q.chip && q.chip !== 'all') {
@@ -104,7 +115,7 @@ export class WorkerService {
     return Prisma.sql`j.id, j.public_id, j.title, c.slug AS category_slug, c.name AS category_name, e.business_name,
       (e.employer_verified_at IS NOT NULL) AS employer_verified, j.reward_usd::text AS reward_usd, j.display_minutes,
       j.proof_types::text[] AS proof_types, j.slots_total, GREATEST(j.slots_left, 0) AS slots_left, j.published_at, j.ends_at,
-      j.eligibility::text AS eligibility, j.min_approval_rate,
+      j.eligibility::text AS eligibility, j.min_approval_rate, (${BOOSTED}) AS is_boosted,
       EXISTS (SELECT 1 FROM submissions s WHERE s.job_id = j.id AND s.worker_user_id = ${c.userId}::uuid) AS done,
       EXISTS (SELECT 1 FROM slot_reservations r WHERE r.job_id = j.id AND r.worker_user_id = ${c.userId}::uuid AND r.status = 'active' AND r.expires_at > now()) AS in_progress`;
   }
@@ -149,7 +160,7 @@ export class WorkerService {
     const page = Math.min(q.page, totalPages);
     const rows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
       SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(q, c)}
-      ORDER BY ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ORDER BY (${BOOSTED}) DESC, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
     return {
       data: rows.map((r) => this.card(r, c, newMin)),
       meta: { total, page, per_page: perPage, total_pages: totalPages, has_more: page < totalPages, counts, facets, applied_filters: applied },
@@ -196,7 +207,7 @@ export class WorkerService {
     // Recommended: interests first, newest otherwise (FR-WJOB-003).
     const recQ: Partial<WorkerJobsQuery> = { chip: c.interests.length ? 'for_you' : 'all', only_open: true, hide_done: true };
     const recRows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
-      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(recQ, c)} ORDER BY j.published_at DESC LIMIT 4`;
+      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(recQ, c)} ORDER BY (${BOOSTED}) DESC, j.published_at DESC LIMIT 5`;
     const categories = await db.category.findMany({ where: { slug: { in: c.interests } }, orderBy: { sortOrder: 'asc' }, select: { name: true } });
 
     const profile = user.workerProfile;
@@ -319,6 +330,8 @@ export class WorkerService {
       db.slotReservation.findFirst({ where: { jobId: job.id, workerUserId: userId, status: { in: ['released', 'expired', 'cancelled'] } }, orderBy: { startedAt: 'desc' } }),
     ]);
     if (job.status === 'suspended' && !submission && !reservation) throw new ApiError('NOT_FOUND');
+    // Scheduled: not visible until it starts.
+    if (job.startsAt && job.startsAt > now && !submission && !reservation) throw new ApiError('NOT_FOUND');
     const live = reservation && reservation.expiresAt > now ? reservation : null;
     if (reservation && !live) await this.reservations.expireOne(reservation.id).catch(() => undefined);
 
@@ -340,11 +353,14 @@ export class WorkerService {
     else if (submission) state = 'already_done';
     else if (live) state = 'in_progress';
     else if (user.status !== 'active') state = 'restricted';
-    else if (!user.emailVerifiedAt && !user.phoneVerifiedAt) state = 'verify_required';
+    else if (user.kycStatus !== 'verified' && user.kycStatus !== 'pending') state = 'verify_required'; // documents not submitted (or rejected)
     else if (job.status === 'paused') state = 'paused';
     else if (job.status !== 'running' || ended) state = 'closed';
     else if (slotsLeft <= 0) state = 'full';
-    else if (job.eligibility === 'kyc_verified' && user.kycStatus !== 'verified') {
+    else if (!jobVisibleIn(user.countryCode, { target_countries: job.targetCountries, excluded_countries: job.excludedCountries })) {
+      state = 'not_eligible';
+      ineligible = { reason: 'location', required_rate: null, your_rate: rate };
+    } else if (job.eligibility === 'kyc_verified' && user.kycStatus !== 'verified') {
       state = 'not_eligible';
       ineligible = { reason: 'kyc_required', required_rate: null, your_rate: rate };
     } else if (job.minApprovalRate > 0 && rate !== null && rate < job.minApprovalRate) {
@@ -388,6 +404,8 @@ export class WorkerService {
         is_required: p.isRequired,
       })),
       proof_instructions: job.proofInstructions,
+      note: job.note,
+      thumbnail_url: job.thumbnailUploadId ? this.uploads.signedUrl(job.thumbnailUploadId, 'full') : null,
       rules: (job.rules as WorkerJobDetail['rules'] | null) ?? DEFAULT_RULES,
       terms: { review_window_hours: job.reviewWindowHours, auto_approve: job.autoApprove, allow_resubmission: job.allowResubmission, rejections_need_reason: true },
       employer: employerTrust(emp, job.employerUser.fullName),

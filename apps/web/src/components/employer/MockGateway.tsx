@@ -34,7 +34,7 @@ export function MockGateway({ refId }: { refId: string }) {
   const d = info.data;
   const open = d && (d.status === 'initiated' || d.status === 'pending');
   return (
-    <main id="main" className="flex min-h-dvh items-center justify-center bg-canvas px-5 py-10">
+    <main id="main" className="flex min-h-dvh items-center justify-center bg-surface px-5 py-10">
       <div className="w-full max-w-[440px]">
         <div className="mb-4 flex items-center justify-between">
           <Logo height={28} />

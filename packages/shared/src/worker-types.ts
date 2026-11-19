@@ -149,7 +149,7 @@ export interface WorkerJobDetail {
   published_at: string | null;
   ends_at: string | null;
   start_state: StartState;
-  ineligible: { reason: 'approval_rate' | 'kyc_required'; required_rate: number | null; your_rate: number | null } | null;
+  ineligible: { reason: 'approval_rate' | 'kyc_required' | 'location'; required_rate: number | null; your_rate: number | null } | null;
   reservation: WorkerReservation | null;
   /** The last ended reservation when there is no active one (G-08 "Slot expired"). */
   last_reservation: { status: ReservationStatus; ended_at: string | null } | null;
@@ -157,6 +157,9 @@ export interface WorkerJobDetail {
   steps: { position: number; body: string }[];
   proof_requirements: WorkerProofRequirement[];
   proof_instructions: string | null;
+  /** Employer note shown above the steps. */
+  note?: string | null;
+  thumbnail_url?: string | null;
   rules: { allowed: string[]; not_allowed: string[] };
   terms: { review_window_hours: number; auto_approve: boolean; allow_resubmission: boolean; rejections_need_reason: boolean };
   employer: EmployerTrust;

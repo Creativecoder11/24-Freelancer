@@ -112,6 +112,16 @@ export interface JobDetail {
   version: number;
   title: string | null;
   category: { slug: string; name: string } | null;
+  subcategory: { slug: string; name: string } | null;
+  target_zone: string;
+  excluded_countries: string[];
+  note: string | null;
+  thumbnail_upload_id: string | null;
+  thumbnail_url: string | null;
+  starts_at: string | null;
+  boost_days: number;
+  boost_fee_usd: string;
+  boosted_until: string | null;
   time_per_task: string;
   open_for_days: number;
   eligibility: 'all_verified' | 'kyc_verified';
@@ -139,6 +149,13 @@ export interface JobDetail {
 }
 
 export interface Quote {
+  boost_days: number;
+  boost_fee_usd: string;
+  boost_price_per_day_usd: string;
+  /** Reserve + boost: what leaves the available balance at publish. */
+  total_due_usd: string;
+  min_spend_usd: string;
+  below_min_spend: boolean;
   reward_usd: string;
   slots_total: number;
   fee_per_task_usd: string;
@@ -355,8 +372,25 @@ export function useSpending(range: '7d' | '30d' | '90d') {
 export function useWallet() {
   return useQuery({ queryKey: ek.wallet, queryFn: () => api.get<WalletSummary>('/employer/wallet') });
 }
+export interface JobCategory {
+  slug: string;
+  name: string;
+  subcategories: { slug: string; name: string }[];
+}
 export function useCategories() {
-  return useQuery({ queryKey: ek.categories, queryFn: () => api.get<{ slug: string; name: string }[]>('/employer/job-categories'), staleTime: 3_600_000 });
+  return useQuery({ queryKey: ek.categories, queryFn: () => api.get<JobCategory[]>('/employer/job-categories'), staleTime: 3_600_000 });
+}
+
+/** Post-a-job settings (admin-editable): minimum spend, boost price and periods, schedule limit. */
+export interface JobOptions {
+  min_spend_usd: string;
+  boost_price_per_day_usd: string;
+  boost_days_options: number[];
+  schedule_max_days: number;
+  open_for_days_options: number[];
+}
+export function useJobOptions() {
+  return useQuery({ queryKey: ['employer', 'job-options'], queryFn: () => api.get<JobOptions>('/employer/job-options'), staleTime: 300_000 });
 }
 export function useJob(id: string | null) {
   return useQuery({ queryKey: ek.job(id ?? ''), queryFn: () => api.get<JobDetail>(`/employer/jobs/${id}`), enabled: !!id });

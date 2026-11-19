@@ -214,4 +214,8 @@ SELECT v.q, v.a, v.p, v.s, length(v.a) > 0 FROM (VALUES
 ) AS v(q, a, p, s)
 WHERE NOT EXISTS (SELECT 1 FROM faqs f WHERE f.question = v.q);
 
+
+-- Post-a-job options (subcategories, boost/schedule/min-spend settings) — migration 0002.
+\ir job-posting-options.sql
+
 COMMIT;

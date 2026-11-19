@@ -22,7 +22,7 @@ export function SignedInPlaceholder({ mode }: { mode: ActiveMode }) {
     <RequireSession>
       {(me) => (
         <ModeSync current={me.active_mode} mode={mode} onSync={() => sync.mutate()}>
-          <main id="main" className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-canvas px-5 text-center">
+          <main id="main" className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-surface px-5 text-center">
             <Logo />
             <div>
               <p className="text-overline uppercase text-fg-brand">{mode === 'employer' ? 'Employer' : 'Worker'} · ID {me.public_id}</p>

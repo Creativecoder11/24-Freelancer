@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import Decimal from 'decimal.js';
 import type { Job, JobProofRequirement, JobStep } from '@24f/db';
+import { COUNTRY_NAMES, jobZone, zoneCountries } from '@24f/shared';
 
 /** Wizard field rules (Doc 04 §5.4, VR-071…VR-085). Settings ranges are passed in. */
 export interface JobLimits {
@@ -12,7 +13,15 @@ export interface JobLimits {
   minApprovalRates: number[];
   reviewWindows: number[];
   shorteners: string[];
+  /** Minimum worker payout per job (slots × reward). */
+  minSpendUsd: string;
+  boostDaysOptions: number[];
+  boostPricePerDayUsd: string;
+  scheduleMaxDays: number;
 }
+
+/** Most screenshots one submission can require. */
+export const MAX_SCREENSHOTS = 5;
 
 export const TIME_MINUTES: Record<string, number> = { about_2: 2, about_5: 5, about_10: 10, about_15: 15, about_30: 30, about_60: 60 };
 export const TIME_PER_TASK_VALUES = ['about_2', 'about_5', 'about_10', 'about_15', 'about_30', 'about_60'] as const;
@@ -30,16 +39,23 @@ const proofReq = z.object({
 export const jobWriteSchema = z
   .object({
     expected_version: z.number().int().optional(),
-    wizard_step: z.number().int().min(1).max(4).optional(),
+    wizard_step: z.number().int().min(1).max(5).optional(),
     title: z.string().max(200).nullish(),
     category: z.string().max(40).nullish(),
+    subcategory: z.string().max(60).nullish(),
+    target_zone: z.string().max(30).optional(),
+    excluded_countries: z.array(z.string().max(2)).max(200).optional(),
+    note: z.string().max(1000).nullish(),
+    thumbnail_upload_id: z.string().uuid().nullish(),
+    starts_at: z.string().datetime({ offset: true }).nullish(),
+    boost_days: z.number().int().min(0).max(30).optional(),
     time_per_task: z.enum(TIME_PER_TASK_VALUES).optional(),
     open_for_days: z.number().int().optional(),
     eligibility: z.enum(['all_verified', 'kyc_verified']).optional(),
     min_approval_rate: z.number().int().optional(),
     steps: z.array(z.object({ position: z.number().int().optional(), body: z.string().max(1000) })).max(20).optional(),
     task_link_url: z.string().max(2048).nullish(),
-    proof_requirements: z.array(proofReq).max(4).optional(),
+    proof_requirements: z.array(proofReq).max(8).optional(),
     proof_instructions: z.string().max(1000).nullish(),
     reward_usd: z.union([z.string(), z.number()]).transform((v) => String(v)).nullish(),
     slots_total: z.number().int().nullish(),
@@ -54,7 +70,14 @@ export const jobWriteSchema = z
   .strict();
 export type JobWrite = z.infer<typeof jobWriteSchema>;
 
-export type JobFull = Job & { jobSteps: JobStep[]; jobProofRequirements: JobProofRequirement[]; category: { slug: string; name: string } | null };
+export type JobFull = Job & {
+  jobSteps: JobStep[];
+  jobProofRequirements: JobProofRequirement[];
+  category: { slug: string; name: string } | null;
+  subcategory: { slug: string; name: string } | null;
+  /** Active subcategories of the chosen category (subcategory is required when there are any). */
+  categorySubcount?: number;
+};
 
 type Errors = Record<string, string[]>;
 const add = (e: Errors, k: string, m: string) => ((e[k] ??= []).push(m), e);
@@ -69,15 +92,29 @@ function isHttpsUrl(u: string) {
   }
 }
 
+/**
+ * Wizard steps (change request Nov 2026): 1 Location, 2 Category, 3 Job information,
+ * 4 Budget & settings, 5 Review & publish. Steps 1–4 have field rules.
+ */
 export function validateStep(step: number, j: JobFull, lim: JobLimits): Errors {
   const e: Errors = {};
   if (step === 1) {
-    if (len(j.title) < 10 || len(j.title) > 80) add(e, 'title', 'Use 10–80 characters for the title.');
-    if (!j.categoryId) add(e, 'category', 'Choose a category.');
-    if (!lim.openForDays.includes(j.openForDays)) add(e, 'open_for_days', 'Choose how long the job stays open.');
-    if (!lim.minApprovalRates.includes(j.minApprovalRate)) add(e, 'min_approval_rate', 'Choose a minimum approval rate.');
+    const zone = jobZone(j.targetZone);
+    if (!zone) add(e, 'target_zone', 'Choose where workers can be.');
+    else {
+      const allowed = new Set(zoneCountries(zone.slug));
+      if (j.excludedCountries.some((c) => !allowed.has(c))) add(e, 'excluded_countries', 'Only hide countries inside the selected zone.');
+      if (allowed.size && j.excludedCountries.length >= allowed.size) add(e, 'excluded_countries', 'Keep at least one country open.');
+    }
   }
   if (step === 2) {
+    if (!j.categoryId) add(e, 'category', 'Choose a category.');
+    // Jobs published before subcategories existed keep working without one.
+    else if (j.status === 'draft' && (j.categorySubcount ?? 0) > 0 && !j.subcategoryId) add(e, 'subcategory', 'Choose a subcategory.');
+  }
+  if (step === 3) {
+    if (len(j.title) < 10 || len(j.title) > 80) add(e, 'title', 'Use 10–80 characters for the title.');
+    if (len(j.note) > 300) add(e, 'note', 'Keep the note under 300 characters.');
     const steps = j.jobSteps;
     if (steps.length < 1 || steps.length > 10) add(e, 'steps', 'Add 1–10 steps.');
     steps.forEach((s, i) => {
@@ -91,23 +128,41 @@ export function validateStep(step: number, j: JobFull, lim: JobLimits): Errors {
       }
     }
     if (j.jobProofRequirements.length < 1) add(e, 'proof_requirements', 'Choose at least one type of proof.');
+    if (j.jobProofRequirements.filter((p) => p.proofType === 'screenshot').length > MAX_SCREENSHOTS) add(e, 'proof_requirements', `Ask for at most ${MAX_SCREENSHOTS} screenshots.`);
     if (len(j.proofInstructions) < 10 || len(j.proofInstructions) > 300) add(e, 'proof_instructions', 'Describe the proof in 10–300 characters.');
   }
-  if (step === 3) {
+  if (step === 4) {
     const r = j.rewardUsd ? new Decimal(j.rewardUsd.toString()) : null;
     if (!r || r.lt(lim.rewardMin) || r.gt(lim.rewardMax) || r.decimalPlaces() > 3)
       add(e, 'reward_usd', `Enter a reward between $${new Decimal(lim.rewardMin).toFixed(3)} and $${new Decimal(lim.rewardMax).toFixed(3)}.`);
     if (!j.slotsTotal || j.slotsTotal < lim.slotsMin || j.slotsTotal > lim.slotsMax)
       add(e, 'slots_total', `Enter between ${lim.slotsMin} and ${lim.slotsMax.toLocaleString('en-US')} slots.`);
+    else if (r && r.mul(j.slotsTotal).lt(lim.minSpendUsd))
+      add(e, 'slots_total', `Minimum spend is $${new Decimal(lim.minSpendUsd).toFixed(2)}. Add workers or raise the reward.`);
+    if (j.status === 'draft' && !lim.openForDays.includes(j.openForDays)) add(e, 'open_for_days', 'Choose how long the job stays open.');
+    if (!lim.minApprovalRates.includes(j.minApprovalRate)) add(e, 'min_approval_rate', 'Choose a minimum approval rate.');
     if (!lim.reviewWindows.includes(j.reviewWindowHours)) add(e, 'review_window_hours', 'Choose 24, 48 or 72 hours.');
     if (j.submissionsPerWorker !== 1) add(e, 'submissions_per_worker', 'Each worker can submit once.');
+    if (j.status === 'draft') {
+      if (j.boostDays !== 0 && !lim.boostDaysOptions.includes(j.boostDays)) add(e, 'boost_days', 'Choose a boost period.');
+      if (j.startsAt) {
+        const ms = j.startsAt.getTime() - Date.now();
+        if (ms < 5 * 60_000) add(e, 'starts_at', 'Pick a start time at least 5 minutes from now, or leave it empty to start at once.');
+        else if (ms > lim.scheduleMaxDays * 86_400_000) add(e, 'starts_at', `Schedule up to ${lim.scheduleMaxDays} days ahead.`);
+      }
+    }
   }
   return e;
 }
 
 export function firstIncompleteStep(j: JobFull, lim: JobLimits): number | null {
-  for (const s of [1, 2, 3]) if (Object.keys(validateStep(s, j, lim)).length) return s;
+  for (const s of [1, 2, 3, 4]) if (Object.keys(validateStep(s, j, lim)).length) return s;
   return null;
+}
+
+/** Valid ISO country codes for "hide countries". */
+export function isKnownCountry(c: string) {
+  return Object.prototype.hasOwnProperty.call(COUNTRY_NAMES, c);
 }
 
 /** Content screen (D-12, BR-092). Pure over title, steps, proof instructions and link. */
@@ -115,7 +170,7 @@ export function screenContent(
   j: JobFull,
   lists: { blockTerms: string[]; blockDomains: string[]; shorteners: string[]; watchTerms: string[] },
 ): { result: 'ok' | 'flag' | 'block'; reason?: string; hits: string[] } {
-  const text = [j.title, ...j.jobSteps.map((s) => s.body), j.proofInstructions ?? ''].join('\n');
+  const text = [j.title, j.note ?? '', ...j.jobSteps.map((s) => s.body), j.proofInstructions ?? ''].join('\n');
   const urls = [...text.matchAll(/https?:\/\/[^\s)]+/gi)].map((m) => m[0]);
   if (j.taskLinkUrl) urls.push(j.taskLinkUrl);
   const hostOf = (u: string) => {

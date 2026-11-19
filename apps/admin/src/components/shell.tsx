@@ -213,7 +213,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <HeaderCtx.Provider value={{ set: setHeader }}>
-      <div className="min-h-dvh bg-canvas desktop:pl-64">
+      <div className="min-h-dvh bg-surface desktop:pl-64">
         {!isProd ? <div className="sticky top-0 z-[60] bg-warning py-0.5 text-center text-label-sm font-semibold text-fg desktop:pl-0">STAGING — test money only</div> : null}
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-line-subtle desktop:block">
           <Sidebar queues={queues} />
@@ -223,7 +223,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Sidebar queues={queues} onNavigate={() => setDrawer(false)} />
           </div>
         </Drawer>
-        <header className="sticky top-0 z-30 border-b border-line-subtle bg-canvas/90 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-line-subtle bg-surface/90 backdrop-blur">
           <div className="flex h-16 items-center gap-3 px-4 tablet:px-8 desktop:h-[76px] desktop:px-10">
             <span className="desktop:hidden">
               <IconButton icon="menu" aria-label="Open navigation" variant="ghost" tooltip={false} onClick={() => setDrawer(true)} />

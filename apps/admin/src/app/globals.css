@@ -5,7 +5,7 @@
 @source "../../../../packages/ui/src";
 
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-body { background: var(--fl-bg-canvas); color: var(--fl-text-primary); }
+body { background: var(--fl-bg-surface); color: var(--fl-text-primary); }
 :focus-visible { outline: none; box-shadow: var(--fl-shadow-focus); }
 
 /* Admin tables: numeric columns use tabular figures; long values wrap politely. */

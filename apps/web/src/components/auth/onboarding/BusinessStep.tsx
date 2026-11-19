@@ -53,7 +53,7 @@ function BusinessCard({ me }: { me: Me }) {
     <OnboardingCard
       overline="STEP 2 OF 2 · BUSINESS PROFILE"
       title="Tell us about your business"
-      sub="Workers see this name on your jobs. You can change it any time in Settings."
+      sub="Workers see this name on your jobs. You can change it any time in your Profile."
     >
       <form noValidate onSubmit={onSubmit} className="mt-8 flex flex-col gap-6">
         {rootErr ? <Alert tone="danger">{rootErr.message}</Alert> : null}

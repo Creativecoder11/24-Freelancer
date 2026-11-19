@@ -43,7 +43,7 @@ export class UploadsService {
   private bucketFor(purpose: UploadPurpose) {
     const env = getEnv();
     if (KYC.has(purpose)) return env.S3_BUCKET_KYC;
-    if (purpose === 'avatar' || purpose === 'employer_logo' || purpose === 'cms_image') return env.S3_BUCKET_PUBLIC;
+    if (purpose === 'avatar' || purpose === 'employer_logo' || purpose === 'cms_image' || purpose === 'job_thumbnail') return env.S3_BUCKET_PUBLIC;
     return env.S3_BUCKET_PROOFS;
   }
 

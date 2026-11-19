@@ -3,9 +3,9 @@
 import NextLink from 'next/link';
 import { useEffect, useState } from 'react';
 import type { WorkerOverview } from '@24f/shared';
-import { formatCount, formatMoney, formatRelative, formatReward, formatHoursLeft } from '@24f/shared';
-import { Alert, Button, EmptyState, Icon, JobCard, Link, Skeleton, StatCard, StatusBadge, TaskRow, cn, useStaggerIn } from '@24f/ui';
-import { toCardData } from '@/lib/jobs';
+import { formatMoney, formatRelative, formatReward, formatHoursLeft } from '@24f/shared';
+import { Alert, Button, EmptyState, Icon, JobRow, Link, Skeleton, StatCard, StatusBadge, TaskRow, cn, useStaggerIn } from '@24f/ui';
+import { toRowData } from '@/lib/jobs';
 import { useOverview } from '../data';
 import { useWorkerHeader } from '../shell';
 import { LoadError, Panel } from '../ui';
@@ -34,7 +34,7 @@ export function OverviewPage() {
     return () => clearInterval(id);
   }, []);
   useWorkerHeader(o ? { title: o.greeting, subtitle: overviewSubtitle(o) } : null);
-  const recRef = useStaggerIn<HTMLDivElement>([o?.recommended.jobs.length ?? 0]);
+  const recRef = useStaggerIn<HTMLUListElement>([o?.recommended.jobs.length ?? 0]);
   const actRef = useStaggerIn<HTMLUListElement>([o?.recent_activity.length ?? 0]);
   const waitRef = useStaggerIn<HTMLUListElement>([o?.waiting_for_review.items.length ?? 0]);
 
@@ -107,19 +107,7 @@ export function OverviewPage() {
       {/* Post-onboarding nudges (C-10) */}
       {o ? <Nudges o={o} /> : null}
 
-      {/* Row 2: quick actions */}
-      <div className="grid grid-cols-2 gap-3 desktop:grid-cols-4 desktop:gap-6">
-        <QuickAction href="/worker/jobs" title="Find jobs" sub={o ? `${formatCount(o.quick_actions.open_jobs)} open now` : undefined} />
-        <QuickAction
-          href="/worker/tasks?tab=needs_fix"
-          title="Fix & resubmit"
-          sub={o ? (o.quick_actions.needs_fix ? `${plural(o.quick_actions.needs_fix, 'task')} ${o.quick_actions.needs_fix === 1 ? 'needs' : 'need'} a fix` : 'Nothing to fix') : undefined}
-        />
-        <QuickAction href="/worker/wallet/withdraw" title="Withdraw" sub={o ? `Available ${formatMoney(o.quick_actions.available_usd)}` : undefined} />
-        <QuickAction href="/worker/referral" title="Invite friends" sub={o ? `Earn ${o.quick_actions.referral_task_percent}% from referrals` : undefined} />
-      </div>
-
-      {/* Row 3: recommended + right column */}
+      {/* Row 2: recommended + right column */}
       <div className="grid gap-6 desktop:grid-cols-[minmax(0,1fr)_352px]">
         <section aria-labelledby="rec-h" className="min-w-0">
           <div className="flex items-start justify-between gap-4">
@@ -141,11 +129,17 @@ export function OverviewPage() {
           </div>
           {o ? (
             o.recommended.jobs.length ? (
-              <div ref={recRef} className="mt-4 grid gap-4 tablet:grid-cols-2 tablet:gap-6">
-                {o.recommended.jobs.slice(0, 4).map((j, i) => (
-                  <JobCard key={j.public_id} job={toCardData(j, now)} href={`/worker/jobs/${j.public_id}`} className={cn(i > 1 && 'max-tablet:hidden')} />
+              <ul ref={recRef} className="mt-4 divide-y divide-line-subtle overflow-hidden rounded-card border border-line bg-surface shadow-xs">
+                {o.recommended.jobs.slice(0, 5).map((j, i) => (
+                  <JobRow
+                    key={j.public_id}
+                    job={toRowData(j, now)}
+                    href={`/worker/jobs/${j.public_id}`}
+                    ctaLabel={j.my_state === 'in_progress' ? 'Continue' : j.my_state === 'done' ? 'View task' : 'View'}
+                    className={cn(i > 2 && 'max-tablet:hidden')}
+                  />
                 ))}
-              </div>
+              </ul>
             ) : (
               <Panel className="mt-4">
                 <EmptyState
@@ -161,27 +155,15 @@ export function OverviewPage() {
               </Panel>
             )
           ) : (
-            <div className="mt-4 grid gap-4 tablet:grid-cols-2 tablet:gap-6">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton.JobCard key={i} />
+            <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface shadow-xs [&>*:last-child]:border-b-0" aria-busy="true">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton.JobRow key={i} />
               ))}
             </div>
           )}
         </section>
 
         <div className="hidden space-y-6 tablet:block">
-          {o ? (
-            <StatCard
-              type="progress"
-              label="Approval rate · last 30 days"
-              value={o.approval.rate_percent !== null ? `${o.approval.rate_percent}%` : '—'}
-              meta={o.approval.rate_percent !== null ? `${o.approval.approved_30d} approved · ${o.approval.rejected_30d} rejected` : 'Shown after 5 decisions'}
-              progress={{ value: o.approval.rate_percent ?? 0, max: 100, valueText: o.approval.rate_percent !== null ? `${o.approval.rate_percent}% approved` : 'Not enough decisions yet' }}
-              countUp
-            />
-          ) : (
-            <Skeleton.StatCard />
-          )}
           <Panel aria-labelledby="act-h" className="p-5">
             <div className="flex items-center justify-between">
               <h2 id="act-h" className="text-h5 text-fg">
@@ -277,21 +259,6 @@ function MiniStat({ label, value, meta, success }: { label: string; value: strin
       <p className={cn('mt-1 font-display text-num-lg tabular-nums', success ? 'text-fg-success' : 'text-fg')}>{value}</p>
       <p className="mt-1 text-body-xs text-fg-tertiary">{meta}</p>
     </section>
-  );
-}
-
-function QuickAction({ href, title, sub }: { href: string; title: string; sub?: string }) {
-  return (
-    <NextLink
-      href={href}
-      className="group flex min-h-[64px] items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-xs transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm focus-visible:shadow-focus focus-visible:outline-none tablet:min-h-[80px] tablet:px-5"
-    >
-      <span className="min-w-0">
-        <span className="block text-label-md text-fg">{title}</span>
-        <span className="hidden truncate text-body-sm text-fg-tertiary tablet:block">{sub ?? ' '}</span>
-      </span>
-      <Icon name="arrow-right" size={20} className="hidden shrink-0 text-fg-tertiary transition-transform group-hover:translate-x-0.5 tablet:block" />
-    </NextLink>
   );
 }
 

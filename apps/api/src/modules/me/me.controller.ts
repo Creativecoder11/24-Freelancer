@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { z } from 'zod';
 import {
   changePasswordSchema,
   interestsSchema,
@@ -45,6 +47,19 @@ export class MeController {
     @Body(new ZodPipe(interestsSchema)) body: { categories: string[]; interest_time?: string | null; interest_device?: string | null },
   ) {
     return this.me.interests(id, body);
+  }
+
+  /** Verify the account's email/phone from inside the app (job page "Verify now"). */
+  @Post('verification/start')
+  @HttpCode(200)
+  startVerification(@CurrentUser('id') id: string, @Req() req: Request) {
+    return this.me.startVerification(id, req.ip ?? null);
+  }
+
+  @Post('verification/confirm')
+  @HttpCode(200)
+  confirmVerification(@CurrentUser('id') id: string, @Body(new ZodPipe(z.object({ challenge_id: z.string().uuid(), code: z.string().regex(/^\d{6}$/) }))) body: { challenge_id: string; code: string }) {
+    return this.me.confirmVerification(id, body);
   }
 
   @Post('onboarding')

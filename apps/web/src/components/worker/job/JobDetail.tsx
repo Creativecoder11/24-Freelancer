@@ -16,6 +16,8 @@ import { useWorkerJob, wk } from '../data';
 import { useWorkerHeader } from '../shell';
 import { BackLink, EmployerCard, LoadError, Panel, Rows, shortUrl, usePulse, useTickBounce } from '../ui';
 import { ExpiredDialog, ReleaseDialog, ReportDialog } from './dialogs';
+import { KycWizard } from '@/components/settings/kyc';
+import { useMe } from '@/lib/auth/session';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -173,6 +175,10 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
             </p>
             {headerBadge(job)}
           </div>
+          {job.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={job.thumbnail_url} alt="" className="mt-3 max-h-56 w-full rounded-[12px] border border-line object-cover" />
+          ) : null}
           <h2 className="mt-2 font-display text-h3 text-fg tablet:text-h2">{job.title}</h2>
           <p className="mt-2 text-body-sm text-fg-tertiary">
             Posted {formatRelative(job.published_at)}
@@ -218,6 +224,13 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
 
         {!res && job.last_reservation?.status === 'expired' && job.start_state === 'can_start' ? <Alert tone="warning">Your slot expired, so your draft was removed. Start again if slots remain.</Alert> : null}
         {!res && job.last_reservation?.status === 'cancelled' ? <Alert tone="warning">This job was closed by the employer, so your slot was released.</Alert> : null}
+
+        {/* Employer note (post-a-job step 3) */}
+        {job.note ? (
+          <Alert tone="info" title="Note from the employer">
+            <span className="whitespace-pre-line">{job.note}</span>
+          </Alert>
+        ) : null}
 
         {/* What to do 29:1375 */}
         <Steps job={job} reservationId={res?.id ?? null} initial={res?.steps_checked ?? []} />
@@ -346,6 +359,23 @@ function PulseTime({ ms, low }: { ms: number; low: boolean }) {
 
 /** Right-card action per start state (G-08 table). */
 function StartArea({ job, starting, onStart }: { job: WorkerJobDetail; starting: boolean; onStart: () => void }) {
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const kycStatus = useMe().data?.kyc_status;
+  // Identity documents are submitted in a dialog on this page; an admin then reviews them.
+  const verifyAction = (text: string) =>
+    kycStatus === 'pending' && job.start_state === 'not_eligible' ? (
+      disabled('This job is for identity-verified workers. Your documents are under review.')
+    ) : (
+      box(
+        <>
+          <Button size="L" fullWidth onClick={() => setVerifyOpen(true)}>
+            Verify now
+          </Button>
+          {reason(text)}
+          <KycWizard open={verifyOpen} onOpenChange={setVerifyOpen} />
+        </>,
+      )
+    );
   const box = (children: React.ReactNode) => <div className="mt-5 space-y-3">{children}</div>;
   const reason = (t: string) => <p className="text-body-sm text-fg-secondary">{t}</p>;
   const disabled = (t: string, extra?: React.ReactNode) =>
@@ -395,27 +425,13 @@ function StartArea({ job, starting, onStart }: { job: WorkerJobDetail; starting:
     case 'closed':
       return disabled('This job has closed.');
     case 'not_eligible':
-      if (job.ineligible?.reason === 'kyc_required')
-        return box(
-          <>
-            <Button variant="secondary" size="L" fullWidth href="/worker/settings#verification">
-              Verify identity
-            </Button>
-            {reason('This job is for identity-verified workers. Verify to take it.')}
-          </>,
-        );
+      if (job.ineligible?.reason === 'location') return disabled('This job isn’t available in your country.');
+      if (job.ineligible?.reason === 'kyc_required') return verifyAction('This job is for identity-verified workers. Submit your documents to take it.');
       return disabled(
         `This job needs an approval rate of ${job.ineligible?.required_rate ?? '—'}% or higher. Yours is ${job.ineligible?.your_rate !== null && job.ineligible?.your_rate !== undefined ? `${job.ineligible.your_rate}%` : '—'}.`,
       );
     case 'verify_required':
-      return box(
-        <>
-          <Button size="L" fullWidth href="/verify?purpose=signup">
-            Verify now
-          </Button>
-          {reason('Verify your email or phone to start jobs.')}
-        </>,
-      );
+      return verifyAction(kycStatus === 'rejected' ? 'Your documents weren’t accepted. Submit them again to start jobs.' : 'Submit your verification documents to start jobs.');
     case 'restricted':
       return disabled('Your account is restricted. You can’t start jobs right now. Contact support to appeal.');
     case 'own_job':

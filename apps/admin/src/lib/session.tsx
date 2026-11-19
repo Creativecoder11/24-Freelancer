@@ -138,7 +138,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   if (!me) {
     return (
-      <div className="grid min-h-dvh place-items-center bg-canvas" aria-busy="true">
+      <div className="grid min-h-dvh place-items-center bg-surface" aria-busy="true">
         <p className="text-body-sm text-fg-tertiary">Loading the admin panel…</p>
       </div>
     );

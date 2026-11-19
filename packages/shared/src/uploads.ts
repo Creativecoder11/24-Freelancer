@@ -39,6 +39,7 @@ export const UPLOAD_RULES: Readonly<Record<UploadPurpose, UploadRule>> = Object.
   avatar: rule([PNG, JPG, WEBP], 2 * MB, 'PNG, JPG or WebP', true),
   employer_logo: rule([PNG, JPG, WEBP], 2 * MB, 'PNG, JPG or WebP', true),
   cms_image: rule([PNG, JPG, WEBP], 5 * MB, 'PNG, JPG or WebP', true),
+  job_thumbnail: rule([PNG, JPG, WEBP], 2 * MB, 'PNG, JPG or WebP', true),
 });
 
 /** User-facing purposes (cms_image is admin only). */
@@ -49,6 +50,7 @@ export const USER_UPLOAD_PURPOSES = [
   'kyc_selfie',
   'avatar',
   'employer_logo',
+  'job_thumbnail',
 ] as const satisfies readonly UploadPurpose[];
 
 export function formatBytesLimit(bytes: number): string {

@@ -58,6 +58,10 @@ export default async function JobDetailPage({ params }: Props) {
                 {job.is_new ? <StatusBadge tone="brand" label="New" /> : null}
                 {!open ? <StatusBadge tone="neutral" label={job.availability === 'full' ? 'All slots are taken' : job.availability === 'paused' ? 'Paused' : 'Closed'} /> : null}
               </div>
+              {job.thumbnail_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={job.thumbnail_url} alt="" className="mt-4 max-h-64 w-full rounded-[14px] border border-line object-cover" />
+              ) : null}
               <h1 className="mt-3 font-display text-[28px] font-bold leading-9 text-fg tablet:text-h1">{job.title}</h1>
               <p className="mt-3 text-body-sm text-fg-tertiary">
                 Posted {formatRelative(job.published_at)} by {job.employer.business_name} · Job ID {job.public_id}
@@ -83,6 +87,7 @@ export default async function JobDetailPage({ params }: Props) {
                 <h2 className="font-display text-h3 text-fg">What you’ll do</h2>
                 <span className="text-body-sm text-fg-tertiary">{job.steps.length} steps</span>
               </div>
+              {job.note ? <p className="mt-4 whitespace-pre-line rounded-[12px] bg-brand-subtle px-4 py-3 text-body-sm text-fg-secondary">{job.note}</p> : null}
               <ol data-reveal-group className="mt-6 space-y-3">
                 {job.steps.map((s) => (
                   <li data-reveal-item key={s.position} className="flex gap-4 rounded-[14px] bg-subtle p-4">
