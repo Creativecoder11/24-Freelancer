@@ -16,8 +16,9 @@ git pull origin main
 echo "==> [2/5] Installing dependencies..."
 pnpm install
 
-echo "==> [3/5] Generating Prisma client..."
+echo "==> [3/5] Generating Prisma client & running database migrations..."
 pnpm run db:generate
+pnpm --filter @24f/db exec prisma migrate deploy
 
 echo "==> [4/5] Building all applications..."
 pnpm -r run build
