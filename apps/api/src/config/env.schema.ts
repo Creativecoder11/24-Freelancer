@@ -64,7 +64,9 @@ export const envSchema = z
     PROCESS_ROLE: z.enum(['api', 'worker', 'scheduler', 'migrate', 'all']).default('api'),
     PORT: int(4000),
     API_PREFIX: str('/api/v1'),
-    API_PUBLIC_URL: str('http://localhost:4000'),
+    /** Only when browsers must reach the API on another origin. Unset: upload and file links are
+     *  relative (/api/v1/…), served through the web and admin apps' own /api/v1 proxy. */
+    API_PUBLIC_URL: optionalStr(),
     WEB_APP_URL: str('http://localhost:3000'),
     ADMIN_APP_URL: str('http://localhost:3001/admin'),
     CDN_PUBLIC_BASE_URL: optionalStr(),

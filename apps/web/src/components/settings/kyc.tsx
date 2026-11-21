@@ -2,13 +2,19 @@
 /** Verification section and the KYC wizard (G-06, Dialog 560, A-12). */
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { documentNumberValid, formatDate, KYC_DOCUMENT_TYPE, type KycDocumentType } from '@24f/shared';
+import { documentNumberValid, formatBytesLimit, formatDate, KYC_DOCUMENT_TYPE, UPLOAD_RULES, type KycDocumentType } from '@24f/shared';
 import { Alert, Button, Dialog, Field, Icon, RadioGroup, Upload, cn } from '@24f/ui';
 import { api, ApiError } from '@/lib/api/client';
 import { useMe } from '@/lib/auth/session';
 import { useProofUpload } from '@/components/worker/useProofUpload';
 import { useKyc, wal } from '@/components/wallet/api';
 import { Section } from './SettingsShell';
+
+/** Server limits, shown on the upload cards ("JPG, PNG or PDF · up to 10 MB"). */
+const DOC_RULE = UPLOAD_RULES.kyc_document;
+const SELFIE_RULE = UPLOAD_RULES.kyc_selfie;
+const DOC_HINT = `${DOC_RULE.typesLabel} · up to ${formatBytesLimit(DOC_RULE.maxBytes)}. Show the whole document. All corners and text must be readable.`;
+const SELFIE_HINT = `${SELFIE_RULE.typesLabel} · up to ${formatBytesLimit(SELFIE_RULE.maxBytes)}. A clear photo of your face, without glasses or a hat.`;
 
 const DOC_LABEL: Record<KycDocumentType, string> = { national_id: 'National ID', passport: 'Passport', driving_licence: 'Driving licence' };
 const NUMBER_HINT: Record<KycDocumentType, string> = {
@@ -258,18 +264,18 @@ export function KycWizard({ open, onOpenChange, intro }: { open: boolean; onOpen
         </div>
       ) : step === 2 ? (
         <div className="flex flex-col gap-4">
-          <Upload label="Front" title="Front of your document" helper="Show the whole document. All corners and text must be readable." accept="image/png,image/jpeg,application/pdf" maxBytes={10 * 1024 * 1024} capture="environment" {...uploadProps(front)} />
+          <Upload label="Front" title="Front of your document" helper={DOC_HINT} accept={DOC_RULE.accept} maxBytes={DOC_RULE.maxBytes} capture="environment" {...uploadProps(front)} />
           {err.front ? <p className="text-body-sm text-fg-danger">{err.front}</p> : null}
           {needsBack ? (
             <>
-              <Upload label="Back" title="Back of your document" helper="Show the whole document. All corners and text must be readable." accept="image/png,image/jpeg,application/pdf" maxBytes={10 * 1024 * 1024} capture="environment" {...uploadProps(back)} />
+              <Upload label="Back" title="Back of your document" helper={DOC_HINT} accept={DOC_RULE.accept} maxBytes={DOC_RULE.maxBytes} capture="environment" {...uploadProps(back)} />
               {err.back ? <p className="text-body-sm text-fg-danger">{err.back}</p> : null}
             </>
           ) : null}
         </div>
       ) : step === 3 ? (
         <div className="flex flex-col gap-3">
-          <Upload label="Selfie" title="A selfie holding your document" helper="A clear photo of your face, without glasses or a hat." accept="image/png,image/jpeg" maxBytes={10 * 1024 * 1024} capture="user" {...uploadProps(selfie)} />
+          <Upload label="Selfie" title="A selfie holding your document" helper={SELFIE_HINT} accept={SELFIE_RULE.accept} maxBytes={SELFIE_RULE.maxBytes} capture="user" {...uploadProps(selfie)} />
           {err.selfie ? <p className="text-body-sm text-fg-danger">{err.selfie}</p> : null}
         </div>
       ) : (

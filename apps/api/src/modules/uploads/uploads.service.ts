@@ -53,8 +53,11 @@ export class UploadsService {
     throw new Error(`upload ${u.id} has no storage key`);
   }
 
+  /** Relative by default: the browser calls its own site, which proxies /api/v1 to the API (no CORS,
+   *  no localhost links in production). API_PUBLIC_URL only for a separately hosted API. */
   private apiBase() {
-    return `${getEnv().API_PUBLIC_URL.replace(/\/$/, '')}/api/v1`;
+    const pub = getEnv().API_PUBLIC_URL;
+    return pub ? `${pub.replace(/\/$/, '')}/api/v1` : '/api/v1';
   }
 
   /** Short-lived signed GET URL (Doc 11 §6.7, 300 s). */
