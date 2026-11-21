@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PayoutMethodsModule } from '../payout-methods/payout-methods.module';
 import { FxModule } from '../fx/fx.service';
 import { WithdrawalsModule } from '../withdrawals/withdrawals.module';
+import { KycModule } from '../kyc/kyc.module';
 import { AdminAuthController, AdminMeController } from './auth/admin-auth.controller';
 import { AdminAuthService } from './auth/admin-auth.service';
 import { AdminGuard, AdminAuditInterceptor } from './core/admin.guard';
@@ -28,7 +29,7 @@ import { AdminOpsController, AdminOpsService } from './system/admin-ops';
  * `admin_sessions`), AdminGuard with permission keys, audit rows on every write.
  */
 @Module({
-  imports: [AuthModule, ReviewModule, NotificationsModule, PayoutMethodsModule, FxModule, WithdrawalsModule],
+  imports: [AuthModule, ReviewModule, NotificationsModule, PayoutMethodsModule, FxModule, WithdrawalsModule, KycModule],
   controllers: [
     AdminAuthController,
     AdminMeController,

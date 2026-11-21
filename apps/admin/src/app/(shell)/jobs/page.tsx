@@ -8,7 +8,7 @@ import { AdminBadge } from '@/components/badges';
 import { useApi, useUrlState } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { dt, reward } from '@/lib/fmt';
-import { clearFlagSpec, suspendJobSpec } from './job-actions';
+import { clearFlagSpec, deleteJobSpec, suspendJobSpec } from './job-actions';
 
 interface Row { public_id: string; title: string; employer: { public_id: string; business_name: string | null }; status: string; pause_reason: string | null; flagged: boolean; open_reports: number; reward_usd: string; slots_total: number; slots_left: number; published_at: string | null }
 
@@ -25,6 +25,7 @@ function Jobs() {
   const counts = (list.meta?.counts ?? {}) as Record<string, number>;
   const detail = can('jobs.read_detail');
   const mod = can('jobs.moderate');
+  const del = can('jobs.delete');
   const [spec, setSpec] = useState<ActionSpec | null>(null);
   return (
     <Gate perms={['jobs.read']}>
@@ -59,14 +60,15 @@ function Jobs() {
               header: '',
               align: 'right',
               cell: (r) =>
-                mod ? (
+                mod || del ? (
                   <RowMenu
                     items={[
                       detail && { key: 'open', label: 'Open', onSelect: () => router.push(`/jobs/${r.public_id}`) },
-                      ['running', 'paused'].includes(r.status) && !(r.status === 'paused' && r.pause_reason === 'admin') && { key: 's', label: 'Suspend', tone: 'danger', onSelect: () => setSpec(suspendJobSpec(r.public_id, null, list.reload)) },
-                      (r.status === 'suspended' || (r.status === 'paused' && r.pause_reason === 'admin')) && { key: 'r', label: 'Reinstate', onSelect: () => router.push(`/jobs/${r.public_id}?action=reinstate`) },
-                      ['running', 'paused', 'suspended'].includes(r.status) && { key: 'c', label: 'Close job', tone: 'danger', onSelect: () => router.push(`/jobs/${r.public_id}?action=close`) },
-                      r.flagged && { key: 'f', label: 'Clear flag', onSelect: () => setSpec(clearFlagSpec(r.public_id, list.reload)) },
+                      mod && ['running', 'paused'].includes(r.status) && !(r.status === 'paused' && r.pause_reason === 'admin') && { key: 's', label: 'Suspend', tone: 'danger', onSelect: () => setSpec(suspendJobSpec(r.public_id, null, list.reload)) },
+                      mod && (r.status === 'suspended' || (r.status === 'paused' && r.pause_reason === 'admin')) && { key: 'r', label: 'Reinstate', onSelect: () => router.push(`/jobs/${r.public_id}?action=reinstate`) },
+                      mod && ['running', 'paused', 'suspended'].includes(r.status) && { key: 'c', label: 'Close job', tone: 'danger', onSelect: () => router.push(`/jobs/${r.public_id}?action=close`) },
+                      mod && r.flagged && { key: 'f', label: 'Clear flag', onSelect: () => setSpec(clearFlagSpec(r.public_id, list.reload)) },
+                      del && ['completed', 'cancelled'].includes(r.status) && { key: 'd', label: 'Delete job', tone: 'danger', divider: true, onSelect: () => setSpec(deleteJobSpec(r.public_id, list.reload)) },
                     ]}
                   />
                 ) : null,

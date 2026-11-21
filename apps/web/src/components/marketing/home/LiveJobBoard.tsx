@@ -1,17 +1,26 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useSyncExternalStore, useTransition } from 'react';
 import NextLink from 'next/link';
 import { FilterChip, Icon, JobRow, gsap } from '@24f/ui';
 import type { JobCard, PublicCategory } from '@24f/shared';
+import { API_BASE, hasSessionHint } from '@/lib/api/client';
 import { toRowData } from '@/lib/jobs';
+import { LockedJobList } from '@/components/jobs/LockedJobList';
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const API = process.env.NEXT_PUBLIC_API_URL || API_BASE;
 
-/** "Open jobs right now" (Figma 18:608): category chips filter a 6-row live list. */
+const noSubscribe = () => () => {};
+
+/**
+ * "Open jobs right now" (Figma 18:608): category chips filter a 6-row live list.
+ * Guests see the rows blurred behind a sign-in prompt. The homepage is statically cached, so
+ * the `fl_session` hint is read in the browser; the server render is always the locked view.
+ */
 export function LiveJobBoard({ initial, categories, total }: { initial: JobCard[]; categories: PublicCategory[]; total: number }) {
   const [active, setActive] = useState<string>('all');
   const [jobs, setJobs] = useState(initial);
   const [pending, start] = useTransition();
+  const signedIn = useSyncExternalStore(noSubscribe, hasSessionHint, () => false);
   const now = Date.now();
 
   async function pick(slug: string) {
@@ -34,16 +43,24 @@ export function LiveJobBoard({ initial, categories, total }: { initial: JobCard[
           <FilterChip key={c.slug} label={c.name} count={c.open_jobs} selected={active === c.slug} onClick={() => pick(c.slug)} />
         ))}
       </div>
-      <ul
-        aria-busy={pending}
-        data-reveal-group
-        className="live-board mt-6 divide-y divide-line-subtle overflow-hidden rounded-card border border-line bg-surface shadow-xs"
-      >
-        {jobs.map((j) => (
-          <JobRow key={j.public_id} job={toRowData(j, now)} href={`/jobs/${j.public_id}`} />
-        ))}
-        {!jobs.length ? <li className="px-6 py-10 text-center text-body-sm text-fg-tertiary">No open jobs in this category right now.</li> : null}
-      </ul>
+      {signedIn || !jobs.length ? (
+        <ul
+          aria-busy={pending}
+          data-reveal-group
+          className="live-board mt-6 divide-y divide-line-subtle overflow-hidden rounded-card border border-line bg-surface shadow-xs"
+        >
+          {jobs.map((j) => (
+            <JobRow key={j.public_id} job={toRowData(j, now)} href={`/jobs/${j.public_id}`} />
+          ))}
+          {!jobs.length ? <li className="px-6 py-10 text-center text-body-sm text-fg-tertiary">No open jobs in this category right now.</li> : null}
+        </ul>
+      ) : (
+        <LockedJobList next="/jobs" className="mt-6" listClassName="live-board">
+          {jobs.map((j) => (
+            <JobRow key={j.public_id} job={toRowData(j, now)} href={`/jobs/${j.public_id}`} />
+          ))}
+        </LockedJobList>
+      )}
       <p className="mt-4 text-body-xs text-fg-tertiary">New jobs are added throughout the day. Slots close when the employer’s budget is used.</p>
       <NextLink href="/jobs" className="sr-only">
         See all jobs <Icon name="arrow-right" size={16} />

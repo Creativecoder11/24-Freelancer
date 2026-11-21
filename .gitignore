@@ -9,3 +9,6 @@ coverage
 .DS_Store
 playwright-report
 test-results
+
+# Uploaded files (KYC documents, proofs, logos). User data: never commit.
+apps/api/.storage/

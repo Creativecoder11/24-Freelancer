@@ -8,9 +8,9 @@ import { AdminBadge } from '@/components/badges';
 import { useApi, useUrlState } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { dt, rel } from '@/lib/fmt';
-import { restrictSpec, reinstateSpec, suspendSpec } from './user-actions';
+import { deleteUserSpec, restrictSpec, reinstateSpec, suspendSpec } from './user-actions';
 
-interface Row { public_id: string; name_masked: string; email_masked: string | null; phone_masked: string | null; status: string; kyc_status: string; has_employer_profile: boolean; risk_flags: string[]; created_at: string; last_login_at: string | null }
+interface Row { public_id: string; name_masked: string; email_masked: string | null; phone_masked: string | null; status: string; deleted: boolean; kyc_status: string; has_employer_profile: boolean; risk_flags: string[]; created_at: string; last_login_at: string | null }
 interface Appeal { id: string; user_public_id: string; user_name_masked: string; kind: string; reason_code: string; message: string; status: string; created_at: string }
 
 /** SCR-ADM-03 Users (Doc 09 §6). Search text stays in component state, never in the URL. */
@@ -80,6 +80,7 @@ function Users() {
                         can('users.restrict') && r.status === 'active' && { key: 'restrict', label: 'Restrict', onSelect: () => setSpec(restrictSpec(r.public_id, list.reload)) },
                         can('users.suspend') && ['active', 'restricted'].includes(r.status) && { key: 'suspend', label: 'Suspend', tone: 'danger', onSelect: () => setSpec(suspendSpec(r.public_id, 0, list.reload)) },
                         can('users.suspend') && ['restricted', 'suspended'].includes(r.status) && { key: 'reinstate', label: 'Reinstate', onSelect: () => setSpec(reinstateSpec(r.public_id, list.reload)) },
+                        can('users.delete') && !r.deleted && { key: 'delete', label: 'Delete user', tone: 'danger', divider: true, onSelect: () => setSpec(deleteUserSpec(r.public_id, list.reload)) },
                       ]}
                     />
                   ),

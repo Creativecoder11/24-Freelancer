@@ -26,10 +26,10 @@ export const PRIVILEGED_ROLES = new Set(['super_admin', 'finance_admin']);
 /** Every key the panel checks, expanded for `GET /admin/me` so the client never parses wildcards. */
 export const ALL_KEYS = [
   'dashboard.read', 'dashboard.money_read',
-  'users.read_masked', 'users.read', 'users.reveal', 'users.restrict', 'users.suspend', 'users.contact', 'users.security',
+  'users.read_masked', 'users.read', 'users.reveal', 'users.restrict', 'users.suspend', 'users.contact', 'users.security', 'users.delete',
   'appeals.log', 'appeals.read', 'appeals.decide',
   'kyc.read_status', 'kyc.read', 'kyc.decide', 'employers.verify',
-  'jobs.read', 'jobs.read_detail', 'jobs.moderate',
+  'jobs.read', 'jobs.read_detail', 'jobs.moderate', 'jobs.delete',
   'submissions.read', 'submissions.override',
   'disputes.read', 'disputes.resolve',
   'reports.read', 'reports.handle',

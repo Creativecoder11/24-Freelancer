@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
-import { Prisma } from '@24f/db';
+import { Prisma, type Job } from '@24f/db';
 import Decimal from 'decimal.js';
 import { maskName } from '@24f/shared';
 import { PrismaService } from '../../../common/prisma.service';
@@ -79,7 +79,7 @@ export class AdminJobsService {
     );
   }
 
-  async detail(publicId: string) {
+  async detail(ctx: AdminCtx, publicId: string) {
     const j = await this.db.job.findUnique({
       where: { publicId },
       include: {
@@ -95,6 +95,7 @@ export class AdminJobsService {
     if (!j || j.deletedAt) throw new ApiError('NOT_FOUND', `We can't find job ${publicId}.`);
     const unit = unitCost(j);
     const free = Math.max(0, (j.slotsTotal ?? 0) - j.countApproved - j.countInReview - j.countNeedsFix);
+    const deleteBlocker = ctx.has('jobs.delete') ? await this.deleteBlocker(j) : null;
     return {
       public_id: j.publicId,
       title: j.title,
@@ -134,6 +135,7 @@ export class AdminJobsService {
         close_release_usd: m2(unit.mul(free)),
       },
       in_review: j.submissions.map((s) => ({ ref: s.publicRef, worker_name_masked: maskName(s.workerUser.fullName), worker_public_id: s.workerUser.publicId, submitted_at: iso(s.lastSubmittedAt), reward_usd: m3(s.rewardUsd) })),
+      delete_blocker: deleteBlocker,
     };
   }
 
@@ -241,6 +243,39 @@ export class AdminJobsService {
     return { public_id: publicId, status: 'cancelled', close_reason: 'admin_closed', approved_count: approvals.length, rejected_count: out.rejected, paid_usd: m2(out.spent), released_usd: m2(out.release) };
   }
 
+  /**
+   * Why a job can't be deleted yet, or null. Deleting hides a finished job everywhere, so money
+   * and open work must be settled first: live jobs are closed (which pays or rejects what's in
+   * review and returns unused budget) and nothing may still be waiting on it.
+   */
+  private async deleteBlocker(j: Pick<Job, 'id' | 'status' | 'countInReview' | 'countNeedsFix' | 'countActiveReservations' | 'reserveOutstandingUsd'>, tx: Prisma.TransactionClient = this.db) {
+    if (['running', 'paused', 'suspended'].includes(j.status)) return 'Close this job first. Closing settles its submissions and returns unused budget.';
+    const open = j.countInReview + j.countNeedsFix + j.countActiveReservations;
+    if (open > 0) return `${open} submission${open === 1 ? '' : 's'} on this job still ${open === 1 ? 'needs' : 'need'} a decision.`;
+    if (await tx.submission.count({ where: { jobId: j.id, disputeOpen: true } })) return 'A dispute on this job is still open.';
+    if (dec(j.reserveOutstandingUsd).gt(0)) return 'Money is still reserved for this job.';
+    return null;
+  }
+
+  /** Soft delete (`deleted_at`): the job leaves every list; submissions, ledger and audit rows stay. */
+  async remove(ctx: AdminCtx, publicId: string, b: Record<string, unknown>) {
+    const reason = needReason(b.reason, 300);
+    const j0 = await this.job(publicId);
+    const j = await this.db.$transaction(async (tx) => {
+      const j = await this.core.lockJob(tx, j0.id);
+      if (j.deletedAt) throw new ApiError('INVALID_STATE', 'This job is already deleted.');
+      const blocker = await this.deleteBlocker(j, tx);
+      if (blocker) throw new ApiError('INVALID_STATE', blocker);
+      const now = new Date();
+      await tx.job.update({ where: { id: j.id }, data: { deletedAt: now } });
+      await tx.jobReport.updateMany({ where: { jobId: j.id, status: 'open' }, data: { status: 'actioned', handledAt: now, handledByAdminId: ctx.id, resolutionNote: 'Job deleted' } });
+      await this.audit.record(ctx, { action: 'job.delete', entityType: 'job', entityId: j.id, entityRef: j.publicId, reason, before: { status: j.status, deleted_at: null }, after: { deleted_at: now.toISOString() } }, tx);
+      return j;
+    });
+    await this.notify.user(j.employerUserId, { type: 'employer_job_deleted', audience: 'employer', category: 'tasks', title: 'Job removed by admin', body: `“${j.title}” was removed by 24 Freelancing: ${reason}`, mandatory: true });
+    return { public_id: publicId, deleted: true };
+  }
+
   async clearFlag(ctx: AdminCtx, publicId: string, b: Record<string, unknown>) {
     const reason = needReason(b.reason);
     const j = await this.job(publicId);
@@ -313,8 +348,8 @@ export class AdminJobsController {
 
   @Get('jobs/:publicId')
   @Perms('jobs.read_detail')
-  detail(@Param('publicId') id: string) {
-    return this.svc.detail(id);
+  detail(@Admin() ctx: AdminCtx, @Param('publicId') id: string) {
+    return this.svc.detail(ctx, id);
   }
 
   @Post('jobs/:publicId/suspend')
@@ -336,6 +371,13 @@ export class AdminJobsController {
   @Perms('jobs.moderate')
   close(@Admin() ctx: AdminCtx, @Param('publicId') id: string, @Body() b: Record<string, unknown>) {
     return this.svc.close(ctx, id, b ?? {});
+  }
+
+  @Post('jobs/:publicId/delete')
+  @HttpCode(200)
+  @Perms('jobs.delete')
+  remove(@Admin() ctx: AdminCtx, @Param('publicId') id: string, @Body() b: Record<string, unknown>) {
+    return this.svc.remove(ctx, id, b ?? {});
   }
 
   @Post('jobs/:publicId/clear-flag')

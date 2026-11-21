@@ -65,3 +65,15 @@ export const closeJobSpec = (id: string, p: JobPreview, done: () => void): Actio
   },
   onDone: done,
 });
+
+/** Admin delete (soft): the job leaves every list. Only for finished jobs with nothing left to settle. */
+export const deleteJobSpec = (id: string, done: () => void): ActionSpec => ({
+  title: 'Delete this job?',
+  description: "This can't be undone. The job is removed from every list, including the employer's, and its open reports are closed. Submissions, payments and the audit trail are kept.",
+  confirm: 'Delete job',
+  variant: 'destructive',
+  fields: [reasonField('Reason', 300, 'The employer sees this.')],
+  submit: (v) => post(`/admin/jobs/${id}/delete`, { reason: v.reason }),
+  success: 'Job deleted.',
+  onDone: done,
+});

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Prisma } from '@24f/db';
-import { maskEmail, maskName, maskPhoneAuth } from '@24f/shared';
+import { maskEmail, maskName, maskPhoneAuth, type CloseBlocker } from '@24f/shared';
 import { PrismaService } from '../../../common/prisma.service';
 import { RedisService } from '../../../common/redis.service';
 import { ApiError } from '../../../common/api-error';
@@ -12,8 +12,20 @@ import { AuditService } from '../core/audit.service';
 import { AdminNotifier } from '../core/notify';
 import { bool, dec, iso, m2, needEnum, needReason, needText, paged, paging, type Q } from '../core/helpers';
 import { AdminJobsService } from '../jobs/admin-jobs';
+import { KycService } from '../../kyc/kyc.service';
 
 export const RESTRICTION_CODES = ['fraud_suspected', 'duplicate_account', 'policy_violation', 'chargeback', 'spam_or_abuse', 'identity_unverified', 'other'] as const;
+
+/** Admin wording for the close-account blockers (the user-facing text speaks to the account owner). */
+const DELETE_BLOCKER_TEXT: Record<CloseBlocker, string> = {
+  worker_balance: 'They still have money available to withdraw.',
+  withdrawals_in_flight: 'A withdrawal is still on the way.',
+  active_reservations: 'They have jobs in progress.',
+  open_submissions: 'Submissions are still in review, need a fix or are disputed.',
+  open_jobs: 'They have running or paused jobs. Close them first.',
+  employer_balance: 'Their deposit still holds money.',
+  employer_reserved: 'Money is still reserved for their jobs.',
+};
 
 const maskPhone = (p: string | null) => (p ? maskPhoneAuth(p) : null);
 
@@ -27,6 +39,7 @@ export class AdminUsersService {
     private readonly audit: AuditService,
     private readonly notify: AdminNotifier,
     private readonly jobs: AdminJobsService,
+    private readonly kyc: KycService,
   ) {}
 
   private get db() {
@@ -63,6 +76,8 @@ export class AdminUsersService {
       else where.OR = [{ fullName: { contains: term, mode: 'insensitive' } }, { publicId: { startsWith: term } }];
     }
     if (q.status) where.status = q.status as Prisma.EnumUserStatusFilter['equals'];
+    // Deleted (anonymised) accounts stay out of the list unless you filter by status or open an exact ID.
+    if (!q.status && !where.publicId) where.anonymisedAt = null;
     if (q.kyc_status) where.kycStatus = q.kyc_status as Prisma.EnumKycStatusFilter['equals'];
     if (bool(q.flagged)) {
       where.AND = [{ OR: [{ withdrawals: { some: { riskFlags: { isEmpty: false } } } }, { referralByReferredUser: { riskFlags: { isEmpty: false } } }] }];
@@ -80,6 +95,7 @@ export class AdminUsersService {
         email_masked: u.email ? maskEmail(u.email) : null,
         phone_masked: maskPhone(u.phoneE164),
         status: u.status,
+        deleted: !!u.anonymisedAt,
         kyc_status: u.kycStatus,
         has_employer_profile: !!u.employerProfile,
         risk_flags: [...(flags.get(u.id) ?? [])],
@@ -116,6 +132,7 @@ export class AdminUsersService {
       this.db.referral.count({ where: { referrerUserId: u.id } }),
     ]);
     const flags = await this.riskFlags([u.id]);
+    const deleteBlockers = ctx.has('users.delete') && !u.anonymisedAt ? await this.deleteBlockers(u.id) : [];
     const unmasked = ctx.isSuper && !u.anonymisedAt;
     if (unmasked) await this.audit.safe(ctx, { action: 'user.view_pii', entityType: 'user', entityId: u.id, entityRef: u.publicId, after: { fields: ['full_name', 'email', 'phone'] } });
     const decided = (u.workerProfile?.approved30d ?? 0) + (u.workerProfile?.rejected30d ?? 0);
@@ -139,6 +156,8 @@ export class AdminUsersService {
       last_login_at: iso(u.lastLoginAt),
       closed_at: iso(u.closedAt),
       anonymised: !!u.anonymisedAt,
+      deleted_at: iso(u.anonymisedAt),
+      delete_blockers: deleteBlockers,
       balances: ctx.has('users.read')
         ? {
             worker_available_usd: m2(bal('worker_earnings')),
@@ -306,6 +325,51 @@ export class AdminUsersService {
     return { public_id: u.publicId, kind, value_masked: kind === 'email' ? maskEmail(value) : maskPhoneAuth(value), verified: false };
   }
 
+  /** Reasons the account can't be deleted yet: the same money and open-work checks as self-close. */
+  private async deleteBlockers(userId: string) {
+    return (await this.kyc.blockers(userId)).map((b) => DELETE_BLOCKER_TEXT[b.code] ?? b.message);
+  }
+
+  /**
+   * Delete an account (soft): closes it and erases personal details, so they can't sign in and their
+   * email and phone are free again. The row stays because ledger, withdrawal, deposit, submission and
+   * audit records point at it; those keep the public ID only.
+   */
+  async remove(ctx: AdminCtx, publicId: string, b: Record<string, unknown>) {
+    const reason = needReason(b.reason, 1000);
+    const u = await this.byPublicId(publicId);
+    if (u.anonymisedAt) throw new ApiError('INVALID_STATE', 'This account is already deleted.');
+    const blockers = await this.deleteBlockers(u.id);
+    if (blockers.length) throw new ApiError('INVALID_STATE', `You can't delete this account yet. ${blockers.join(' ')}`);
+    const now = new Date();
+    await this.db.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: u.id },
+        data: {
+          status: 'closed',
+          closedAt: u.closedAt ?? now,
+          anonymisedAt: now,
+          fullName: 'Deleted user',
+          email: null,
+          emailVerifiedAt: null,
+          phoneE164: null,
+          phoneVerifiedAt: null,
+          passwordHash: null,
+          twoStepEnabled: false,
+          referralCode: null,
+          avatarUploadId: null,
+          updatedAt: now,
+        },
+      });
+      await tx.payoutMethod.updateMany({ where: { userId: u.id, deletedAt: null }, data: { deletedAt: now, isDefault: false } });
+      await tx.trustedDevice.deleteMany({ where: { userId: u.id } });
+      await this.audit.record(ctx, { action: 'user.delete', entityType: 'user', entityId: u.id, entityRef: u.publicId, reason, before: { status: u.status, anonymised: false }, after: { status: 'closed', anonymised: true, deleted_at: now.toISOString() } }, tx);
+    });
+    const revoked = await this.sessions.revokeAll(u.id, 'account_deleted');
+    await invalidateUserStatus(this.redis, u.id);
+    return { public_id: u.publicId, status: 'closed', deleted: true, sessions_revoked: revoked };
+  }
+
   async logAppeal(ctx: AdminCtx, publicId: string, b: Record<string, unknown>) {
     const message = needText(b.message, 1000, 'message', 'Enter 20 to 1,000 characters.', 20);
     const u = await this.byPublicId(publicId);
@@ -430,6 +494,14 @@ export class AdminUsersController {
   @Reauth()
   contact(@Admin() ctx: AdminCtx, @Param('publicId') id: string, @Body() b: Record<string, unknown>) {
     return this.svc.contact(ctx, id, b ?? {});
+  }
+
+  @Post('users/:publicId/delete')
+  @HttpCode(200)
+  @Perms('users.delete')
+  @Reauth()
+  remove(@Admin() ctx: AdminCtx, @Param('publicId') id: string, @Body() b: Record<string, unknown>) {
+    return this.svc.remove(ctx, id, b ?? {});
   }
 
   @Post('users/:publicId/appeals')

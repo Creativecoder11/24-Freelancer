@@ -7,7 +7,8 @@ import { AdminBadge, LABELS } from '@/components/badges';
 import { useApi, useUrlState } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { dt, reward, usd } from '@/lib/fmt';
-import { clearFlagSpec, closeJobSpec, reinstateJobSpec, suspendJobSpec, type JobPreview } from '../job-actions';
+import { useRouter } from 'next/navigation';
+import { clearFlagSpec, closeJobSpec, deleteJobSpec, reinstateJobSpec, suspendJobSpec, type JobPreview } from '../job-actions';
 
 interface Detail extends JobPreview {
   public_id: string; title: string; status: string; pause_reason: string | null; category: string | null; task_link_url: string | null; proof_instructions: string | null; steps: { position: number; body: string }[]; proof_requirements: { proof_type: string; title: string; required: boolean }[]; screen_hits: unknown[]; flagged: boolean;
@@ -16,17 +17,20 @@ interface Detail extends JobPreview {
   counts: { active_reservations: number; in_review: number; needs_fix: number; approved: number; rejected: number };
   reward_usd: string; slots_total: number; slots_left: number; budget_usd: string; reserve_outstanding_usd: string; review_window_hours: number; auto_approve: boolean; eligibility: string; min_approval_rate: number; published_at: string | null; ends_at: string | null; suspended_at: string | null; suspended_by: string | null; suspension_reason: string | null;
   preview: { suspend_release_usd: string; reinstate_reserve_usd: string; close_release_usd: string };
+  delete_blocker: string | null;
 }
 
 /** SCR-ADM-07 Job detail (Doc 09 §6, §9). */
 function JobDetail({ id }: { id: string }) {
   const { can, tick } = useSession();
+  const router = useRouter();
   const u = useUrlState();
   const { data, error, reload, hardReload } = useApi<Detail>(`/admin/jobs/${id}`, { t: tick });
   const history = useApi<{ id: string; action: string; actor_name: string; reason: string | null; created_at: string }[]>(can('audit.read') ? '/admin/audit-log' : null, { entity_ref: id, from: '2020-01-01', t: tick });
   const [spec, setSpec] = useState<ActionSpec | null>(null);
   usePageHeader(data?.title ?? 'Job', id);
   const mod = can('jobs.moderate');
+  const del = can('jobs.delete');
   const preview = data ? { ...data, close_release_usd: data.preview.close_release_usd } : null;
   useEffect(() => {
     if (!data || !mod) return;
@@ -59,13 +63,21 @@ function JobDetail({ id }: { id: string }) {
             </div>
             <p className="text-body-sm text-fg-secondary">Posted by <RefLink href={`/users/${data.employer.public_id}`}>{data.employer.business_name ?? data.employer.public_id}</RefLink> · Published {dt(data.published_at)}</p>
           </div>
-          {mod ? (
+          {mod || del ? (
             <WriteOnly>
-              <div className="flex flex-wrap gap-2">
-                {data.flagged ? <Button variant="secondary" onClick={() => setSpec(clearFlagSpec(id, reload))}>Clear flag</Button> : null}
-                {canSuspend ? <Button variant="destructive" onClick={() => setSpec(suspendJobSpec(id, { active: data.counts.active_reservations, release: data.preview.suspend_release_usd }, reload))}>Suspend</Button> : null}
-                {canReinstate ? <Button onClick={() => setSpec(reinstateJobSpec(id, data.preview.reinstate_reserve_usd, reload))}>Reinstate</Button> : null}
-                {['running', 'paused', 'suspended'].includes(data.status) ? <Button variant="secondary" onClick={() => setSpec(closeJobSpec(id, preview!, reload))}>Close job</Button> : null}
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex flex-wrap justify-end gap-2">
+                  {mod && data.flagged ? <Button variant="secondary" onClick={() => setSpec(clearFlagSpec(id, reload))}>Clear flag</Button> : null}
+                  {mod && canSuspend ? <Button variant="destructive" onClick={() => setSpec(suspendJobSpec(id, { active: data.counts.active_reservations, release: data.preview.suspend_release_usd }, reload))}>Suspend</Button> : null}
+                  {mod && canReinstate ? <Button onClick={() => setSpec(reinstateJobSpec(id, data.preview.reinstate_reserve_usd, reload))}>Reinstate</Button> : null}
+                  {mod && ['running', 'paused', 'suspended'].includes(data.status) ? <Button variant="secondary" onClick={() => setSpec(closeJobSpec(id, preview!, reload))}>Close job</Button> : null}
+                  {del ? (
+                    <Button variant="destructive" leadingIcon="trash" disabled={!!data.delete_blocker} disabledReasonId={data.delete_blocker ? 'job-delete-blocked' : undefined} onClick={() => setSpec(deleteJobSpec(id, () => router.replace('/jobs')))}>
+                      Delete job
+                    </Button>
+                  ) : null}
+                </div>
+                {del && data.delete_blocker ? <p id="job-delete-blocked" className="text-body-xs text-fg-tertiary">Can&apos;t delete yet: {data.delete_blocker}</p> : null}
               </div>
             </WriteOnly>
           ) : null}

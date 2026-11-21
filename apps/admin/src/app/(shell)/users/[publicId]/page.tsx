@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, use, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ActionMenu, Alert, Avatar, Button, EmptyState, StatCard, Tabs, initialsFrom } from '@24f/ui';
 import { usePageHeader, WriteOnly } from '@/components/shell';
 import { ActionDialog, ErrorState, Gate, KV, RefLink, Section, Table, type ActionSpec } from '@/components/kit';
@@ -7,11 +8,11 @@ import { AdminBadge, LABELS } from '@/components/badges';
 import { useApi, useUrlState } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { d, dt, exact, rel, reward, usd } from '@/lib/fmt';
-import { adjustSpec, appealSpec, contactSpec, decideAppealSpec, reinstateSpec, reset2faSpec, restrictSpec, revealSpec, signOutSpec, suspendSpec } from '../user-actions';
+import { adjustSpec, appealSpec, contactSpec, decideAppealSpec, deleteUserSpec, reinstateSpec, reset2faSpec, restrictSpec, revealSpec, signOutSpec, suspendSpec } from '../user-actions';
 
 interface Detail {
   public_id: string; name_masked: string; email_masked: string | null; phone_masked: string | null; unmasked: { full_name: string | null; email: string | null; phone: string | null } | null;
-  country_code: string; status: string; kyc_status: string; active_mode: string; has_employer_profile: boolean; business_name: string | null; email_verified: boolean; phone_verified: boolean; two_step_enabled: boolean; terms_version: string; created_at: string; last_login_at: string | null; closed_at: string | null; anonymised: boolean;
+  country_code: string; status: string; kyc_status: string; active_mode: string; has_employer_profile: boolean; business_name: string | null; email_verified: boolean; phone_verified: boolean; two_step_enabled: boolean; terms_version: string; created_at: string; last_login_at: string | null; closed_at: string | null; anonymised: boolean; deleted_at: string | null; delete_blockers: string[];
   balances: Record<string, string> | null;
   stats: { submissions: number; approval_rate_pct: number | null; jobs_posted: number; withdrawals_paid: number; deposits_completed: number };
   restrictions: { id: string; kind: string; reason_code: string; internal_note: string | null; public_message: string; starts_at: string; ends_at: string | null; created_by: string; lifted_at: string | null; lifted_by: string | null; active: boolean }[];
@@ -24,6 +25,7 @@ interface Detail {
 /** SCR-ADM-04 User detail (Doc 09 §6, §7). */
 function UserDetail({ publicId }: { publicId: string }) {
   const { can, tick } = useSession();
+  const router = useRouter();
   const u = useUrlState();
   const tab = u.get('tab', 'overview');
   const { data, error, loading, reload, hardReload } = useApi<Detail>(`/admin/users/${publicId}`, { t: tick });
@@ -42,6 +44,9 @@ function UserDetail({ publicId }: { publicId: string }) {
   const active = data.restrictions.find((r) => r.active);
   const openAppeal = data.appeals.some((a) => a.status === 'open' || a.status === 'under_review');
   const show = (k: 'full_name' | 'email' | 'phone', masked: string | null) => revealed?.[k] ?? data.unmasked?.[k] ?? masked ?? '—';
+  const canDelete = can('users.delete') && !data.anonymised;
+  const deleteBlocked = data.delete_blockers.length > 0;
+  const openDelete = () => setSpec(deleteUserSpec(publicId, () => router.replace('/users')));
   const tabs = [
     { value: 'overview', label: 'Overview' },
     ...(data.balances ? [{ value: 'wallet', label: 'Wallet' }] : []),
@@ -83,20 +88,35 @@ function UserDetail({ publicId }: { publicId: string }) {
                     ...(can('users.contact') ? [{ key: 'contact', label: 'Change contact', onSelect: () => setSpec(contactSpec(publicId, reload)) }] : []),
                     ...(can('users.security') && data.two_step_enabled ? [{ key: '2fa', label: 'Reset two-step', tone: 'danger' as const, onSelect: () => setSpec(reset2faSpec(publicId, reload)) }] : []),
                     ...(can('users.security') && data.sessions.length ? [{ key: 'out', label: 'Sign out everywhere', tone: 'danger' as const, onSelect: () => setSpec(signOutSpec(publicId, data.sessions.length, reload)) }] : []),
+                    ...(canDelete ? [{ key: 'delete', label: 'Delete user', tone: 'danger' as const, divider: true, disabled: deleteBlocked, disabledReason: data.delete_blockers.join(' '), onSelect: openDelete }] : []),
                   ]}
                 />
               </div>
             </WriteOnly>
-          ) : can('ledger.adjust') ? (
-            <Button variant="secondary" onClick={() => setSpec(adjustSpec({ userId: publicId, balances: data.balances ?? undefined }, reload))}>Adjust balance</Button>
-          ) : null}
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {can('ledger.adjust') ? <Button variant="secondary" onClick={() => setSpec(adjustSpec({ userId: publicId, balances: data.balances ?? undefined }, reload))}>Adjust balance</Button> : null}
+              {canDelete ? (
+                <WriteOnly>
+                  <Button variant="destructive" disabled={deleteBlocked} disabledReasonId={deleteBlocked ? 'user-delete-blocked' : undefined} onClick={openDelete}>Delete user</Button>
+                </WriteOnly>
+              ) : null}
+            </div>
+          )}
         </div>
         {active ? (
           <Alert tone={active.kind === 'suspended' ? 'danger' : 'warning'} className="mt-4" title={`${active.kind === 'suspended' ? 'Suspended' : 'Restricted'} · ${LABELS.restriction[active.reason_code] ?? active.reason_code}`}>
             {active.public_message} {active.ends_at ? `Ends ${dt(active.ends_at)}.` : 'No end date.'}
           </Alert>
         ) : null}
-        {closed ? <Alert tone="info" className="mt-4">This account was closed on {d(data.closed_at)}. Personal data is anonymised after 30 days.</Alert> : null}
+        {data.anonymised ? (
+          <Alert tone="info" className="mt-4">This account was deleted on {d(data.deleted_at)}. Personal details are erased. Payments, submissions and history are kept under ID {data.public_id}.</Alert>
+        ) : closed ? (
+          <Alert tone="info" className="mt-4">This account was closed on {d(data.closed_at)}. Personal data is anonymised after 30 days.</Alert>
+        ) : null}
+        {closed && canDelete && deleteBlocked ? (
+          <p id="user-delete-blocked" className="mt-2 text-body-sm text-fg-tertiary">Can&apos;t delete yet: {data.delete_blockers.join(' ')}</p>
+        ) : null}
       </section>
 
       <Tabs label="User detail" value={tab} panelId="u-tab" className="mt-6" onChange={(v) => u.set({ tab: v === 'overview' ? null : v })} tabs={tabs} />

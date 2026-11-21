@@ -169,18 +169,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const dash = useApi<Dashboard>(can('dashboard.read') ? '/admin/dashboard' : null, { t: tick }, { pollMs: 60_000 });
   const queues = dash.data?.queues ?? {};
   const content = useRef<HTMLDivElement>(null);
-  const [offline, setOffline] = useState(false);
-
-  useEffect(() => {
-    const up = () => setOffline(!navigator.onLine);
-    up();
-    window.addEventListener('online', up);
-    window.addEventListener('offline', up);
-    return () => {
-      window.removeEventListener('online', up);
-      window.removeEventListener('offline', up);
-    };
-  }, []);
 
   useGSAP(
     () => {
@@ -251,7 +239,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main id="main" className="mx-auto max-w-[1440px] px-4 py-6 tablet:px-8 desktop:px-10 desktop:pb-10 desktop:pt-8">
-          {offline ? <Alert tone="warning" className="mb-4" title="You're offline">Actions are paused until your connection is back.</Alert> : null}
           {shellAlerts.length ? (
             <div className="mb-5 space-y-2">
               {shellAlerts.map((a) => (

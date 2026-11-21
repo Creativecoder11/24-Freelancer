@@ -162,3 +162,18 @@ export const adjustSpec = (prefill: { userId?: string; balances?: Record<string,
   success: 'Sent for approval.',
   onDone: done,
 });
+
+/** Admin delete: closes the account and erases personal details. Ledger and history keep the user ID. */
+export const deleteUserSpec = (id: string, done: () => void): ActionSpec => ({
+  title: 'Delete this user?',
+  description: "This can't be undone. Their name, email, phone and password are erased, every session ends and they can't sign in again. The email and phone become free for a new account. Payments, submissions and the audit trail are kept under the user ID.",
+  confirm: 'Delete user',
+  variant: 'destructive',
+  fields: [
+    reasonField(),
+    { name: 'confirm_id', type: 'text', label: `Type ${id} to confirm`, required: true, max: 9, pattern: new RegExp(`^${id}$`), patternMsg: `Type ${id} exactly.` },
+  ],
+  submit: (v) => post(`/admin/users/${id}/delete`, { reason: v.reason }),
+  success: 'User deleted.',
+  onDone: done,
+});
