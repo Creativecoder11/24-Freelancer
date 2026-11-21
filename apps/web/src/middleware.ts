@@ -14,6 +14,14 @@ export const config = {
  */
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  // One host for the site: www.<domain> → <domain>. Login cookies belong to the exact host that set
+  // them, so with both hosts live a sign-in on one looked signed out on the other (Post a job → login).
+  const host = (req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '').split(',')[0]!.trim().toLowerCase();
+  if (host.startsWith('www.')) {
+    return NextResponse.redirect(new URL(`${pathname}${search}`, `https://${host.slice(4)}`), 308);
+  }
+
   const hasSession = req.cookies.get('fl_session')?.value === '1';
   if (!hasSession && PROTECTED.some((re) => re.test(pathname))) {
     const url = req.nextUrl.clone();

@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuthenticatedResponse, Me } from '@24f/shared';
 import { Button, EmptyState, Spinner } from '@24f/ui';
-import { api, ApiError, getAccessToken, hasSessionHint, isSignedOutError, logout, setAccessToken } from '@/lib/api/client';
+import { api, ApiError, getAccessToken, hasSessionHint, isSignedOutError, logout, refreshAccessToken, setAccessToken } from '@/lib/api/client';
 import { postAuthPath, safeNext } from '@/lib/next-param';
 
 export const meKey = ['me'] as const;
@@ -82,16 +82,41 @@ export function RequireSession({ children }: { children: (me: Me) => React.React
   return <>{children(me.data)}</>;
 }
 
+/** Where a signed-in user opening /login or /signup belongs: `next`, onboarding, or their overview. */
+function signedInDestination(m: Me, next: string | null) {
+  const nextPath = m.onboarding_completed_at ? (m.active_mode === 'employer' ? '/employer' : '/worker') : '/onboarding/role';
+  return postAuthPath({ next_path: nextPath, active_mode: m.active_mode }, next);
+}
+
 /** Signed-in users opening /login or /signup go to `next` or their overview (Doc 02 §6.1.5). */
 export function GuestOnlyGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const params = useSearchParams();
   const me = useMe();
   useEffect(() => {
-    if (!me.data) return;
-    const m = me.data;
-    const nextPath = m.onboarding_completed_at ? (m.active_mode === 'employer' ? '/employer' : '/worker') : '/onboarding/role';
-    router.replace(postAuthPath({ next_path: nextPath, active_mode: m.active_mode }, params.get('next')));
+    if (me.data) router.replace(signedInDestination(me.data, params.get('next')));
   }, [me.data, params, router]);
+
+  // Still signed in, but the `fl_session` hint is gone (cleared by an old client, expired early, or
+  // never set on this host), so the page gate sent the user here, e.g. from Post a job. The refresh
+  // cookie is still valid: swap it quietly and carry on to `next` instead of asking for a password.
+  // Only when the API could set the hint again, or the page gate would send the user straight back.
+  useEffect(() => {
+    if (hasSessionHint() || getAccessToken()) return;
+    let live = true;
+    void (async () => {
+      try {
+        const token = await refreshAccessToken();
+        if (!live || !token || !hasSessionHint()) return;
+        const m = await api.get<Me>('/me');
+        if (live) router.replace(signedInDestination(m, params.get('next')));
+      } catch {
+        /* no session here: show the form */
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [params, router]);
   return <>{children}</>;
 }

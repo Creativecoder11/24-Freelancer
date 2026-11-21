@@ -49,6 +49,7 @@ import {
 import { useEmployerHeader } from '../shell';
 import { ErrorPanel, TIME_OPTIONS, timeLabel } from '../common';
 import { StepsEditor } from './StepsEditor';
+import { KYC_INTRO, KycWizard } from '@/components/settings/kyc';
 import {
   LAST_FORM_STEP,
   MAX_SCREENSHOTS,
@@ -133,6 +134,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
   const [confirmRules, setConfirmRules] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [kycOpen, setKycOpen] = useState(false);
   const [pubError, setPubError] = useState<{ title: string; body: string } | null>(null);
   const publicId = job?.public_id ?? null;
   const published = !!job && job.status !== 'draft';
@@ -315,6 +317,10 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
         }
         if (e.code === 'JOB_CONTENT_BLOCKED') return setPubError({ title: 'This job can’t be published yet', body: 'It may break the posting rules. Edit it or contact support.' });
         if (e.code === 'VERIFICATION_REQUIRED') return setPubError({ title: 'Verify your account', body: 'Verify your email or phone before publishing.' });
+        if (e.code === 'KYC_REQUIRED') {
+          setKycOpen(true);
+          return setPubError({ title: 'Verify your identity first', body: 'Submit your ID and a selfie, then publish. You don’t have to wait for the review.' });
+        }
         if (e.code === 'JOB_INCOMPLETE') {
           const n = (e.details.first_incomplete_step as number) ?? 1;
           return setPubError({ title: 'Some steps aren’t finished', body: `Finish step ${n} (${STEP_LABELS[n - 1] ?? ''}) first.` });
@@ -491,6 +497,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
         />
       </div>
 
+      <KycWizard open={kycOpen} onOpenChange={setKycOpen} intro={KYC_INTRO.post} />
       <Dialog
         open={publishOpen}
         onOpenChange={setPublishOpen}

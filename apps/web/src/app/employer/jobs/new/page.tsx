@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { JobWizard } from '@/components/employer/wizard/JobWizard';
+import { KycGate } from '@/components/settings/kyc';
 
 export const metadata: Metadata = { title: 'Post a job' };
 
@@ -8,7 +9,10 @@ export const metadata: Metadata = { title: 'Post a job' };
 export default function Page() {
   return (
     <Suspense>
-      <JobWizard />
+      {/* Identity documents first: the wizard opens once they're submitted. */}
+      <KycGate>
+        <JobWizard />
+      </KycGate>
     </Suspense>
   );
 }

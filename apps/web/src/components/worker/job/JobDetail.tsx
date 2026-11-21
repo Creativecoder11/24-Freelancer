@@ -16,7 +16,7 @@ import { useWorkerJob, wk } from '../data';
 import { useWorkerHeader } from '../shell';
 import { BackLink, EmployerCard, LoadError, Panel, Rows, shortUrl, usePulse, useTickBounce } from '../ui';
 import { ExpiredDialog, ReleaseDialog, ReportDialog } from './dialogs';
-import { KycWizard } from '@/components/settings/kyc';
+import { KYC_INTRO, KycWizard } from '@/components/settings/kyc';
 import { useMe } from '@/lib/auth/session';
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -134,6 +134,9 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
     }
   }, [left, res, offset, qc, job.public_id]);
 
+  // Identity documents first (submitted is enough): one dialog for the start button, the mobile bar
+  // and a start the API refuses because the documents are missing or were rejected.
+  const [kycOpen, setKycOpen] = useState(false);
   const start = useMutation<StartJobResponse, ApiError>({
     mutationFn: () => api.post<StartJobResponse>(`/worker/jobs/${job.public_id}/start`),
     onSuccess: (r) => {
@@ -145,8 +148,9 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
       toast.show({ tone: 'success', title: 'Slot reserved', body: 'Finish and submit before the timer ends.' });
     },
     onError: (e) => {
-      toast.show({ tone: 'danger', title: e.message || 'We couldn’t start this job' });
       void qc.invalidateQueries({ queryKey: wk.job(job.public_id) });
+      if (e.code === 'VERIFICATION_REQUIRED') return setKycOpen(true);
+      toast.show({ tone: 'danger', title: e.message || 'We couldn’t start this job' });
     },
   });
 
@@ -294,7 +298,7 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
             {job.slots_left} of {job.slots_total} slots left
           </p>
           <Progress className="mt-2" value={job.slots_filled} max={job.slots_total} valueText={`${job.slots_filled} of ${job.slots_total} slots filled`} />
-          <StartArea job={job} starting={start.isPending} onStart={() => start.mutate()} />
+          <StartArea job={job} starting={start.isPending} onStart={() => start.mutate()} onVerify={() => setKycOpen(true)} />
           <Rows
             className="mt-5 border-t border-line-subtle pt-5"
             rows={[
@@ -318,6 +322,8 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
         </LinkButton>
       </aside>
 
+      <KycWizard open={kycOpen} onOpenChange={setKycOpen} intro={KYC_INTRO.start} />
+
       {/* Mobile sticky action bar */}
       <StickyActionBar className="desktop:hidden">
         <div className="mr-auto">
@@ -330,6 +336,10 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
           </Button>
         ) : job.start_state === 'can_start' ? (
           <Button size="L" loading={start.isPending} loadingText="Starting…" onClick={() => start.mutate()} className="w-[200px]">
+            Start this job
+          </Button>
+        ) : job.start_state === 'verify_required' ? (
+          <Button size="L" onClick={() => setKycOpen(true)} className="w-[200px]">
             Start this job
           </Button>
         ) : job.start_state === 'already_done' && job.submission_ref ? (
@@ -358,21 +368,19 @@ function PulseTime({ ms, low }: { ms: number; low: boolean }) {
 }
 
 /** Right-card action per start state (G-08 table). */
-function StartArea({ job, starting, onStart }: { job: WorkerJobDetail; starting: boolean; onStart: () => void }) {
-  const [verifyOpen, setVerifyOpen] = useState(false);
+function StartArea({ job, starting, onStart, onVerify }: { job: WorkerJobDetail; starting: boolean; onStart: () => void; onVerify: () => void }) {
   const kycStatus = useMe().data?.kyc_status;
   // Identity documents are submitted in a dialog on this page; an admin then reviews them.
-  const verifyAction = (text: string) =>
+  const verifyAction = (text: string, label = 'Verify now') =>
     kycStatus === 'pending' && job.start_state === 'not_eligible' ? (
       disabled('This job is for identity-verified workers. Your documents are under review.')
     ) : (
       box(
         <>
-          <Button size="L" fullWidth onClick={() => setVerifyOpen(true)}>
-            Verify now
+          <Button size="L" fullWidth leadingIcon="shield-check" onClick={onVerify}>
+            {label}
           </Button>
           {reason(text)}
-          <KycWizard open={verifyOpen} onOpenChange={setVerifyOpen} />
         </>,
       )
     );
@@ -431,7 +439,10 @@ function StartArea({ job, starting, onStart }: { job: WorkerJobDetail; starting:
         `This job needs an approval rate of ${job.ineligible?.required_rate ?? '—'}% or higher. Yours is ${job.ineligible?.your_rate !== null && job.ineligible?.your_rate !== undefined ? `${job.ineligible.your_rate}%` : '—'}.`,
       );
     case 'verify_required':
-      return verifyAction(kycStatus === 'rejected' ? 'Your documents weren’t accepted. Submit them again to start jobs.' : 'Submit your verification documents to start jobs.');
+      return verifyAction(
+        kycStatus === 'rejected' ? 'Your documents weren’t accepted. Submit them again to start jobs.' : 'Verify your identity first: a photo of your ID and a selfie. You can start right after you submit.',
+        'Start this job',
+      );
     case 'restricted':
       return disabled('Your account is restricted. You can’t start jobs right now. Contact support to appeal.');
     case 'own_job':
