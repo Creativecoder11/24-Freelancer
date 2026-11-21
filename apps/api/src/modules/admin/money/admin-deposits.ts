@@ -14,6 +14,7 @@ import { AuditService } from '../core/audit.service';
 import { AdminNotifier } from '../core/notify';
 import { DualControlService, pendingResponse } from '../core/dual-control';
 import { bool, dateRange, dec, idemKey, iso, m2, m6, needMoney, needReason, needText, paged, paging, pd, type Q } from '../core/helpers';
+import { CHANNELS, channelLabel, isManualChannel } from '../../deposits/manual-channels';
 
 const OBJ = 'deposit';
 const CLEARING: Record<string, string> = { bkash: 'gateway_clearing:bkash_checkout', nowpayments: 'gateway_clearing:nowpayments', crypto: 'gateway_clearing:nowpayments', sslcommerz: 'gateway_clearing:sslcommerz', card: 'gateway_clearing:sslcommerz', mock: 'gateway_clearing:mock' };
@@ -48,9 +49,15 @@ export class AdminDepositsService {
   }
 
   private methodLabel(d: { method: string; provider: string; providerAsset: string | null }) {
-    if (d.method === 'mobile_wallet') return `Mobile wallet · ${d.providerAsset === 'nagad' ? 'Nagad' : 'bKash'}`;
+    const manual = d.provider.endsWith('_manual') ? ' (manual)' : '';
+    if (d.method === 'mobile_wallet') return `Mobile wallet · ${channelLabel(d.providerAsset) ?? 'bKash'}${manual}`;
     if (d.method === 'card') return `Card · ${d.provider}`;
-    return 'Crypto · USDT';
+    return `Crypto · ${channelLabel(d.providerAsset) ?? 'USDT'}${manual}`;
+  }
+
+  /** What the transaction reference is called on this rail ("bKash TrxID", "Binance Pay Order ID"…). */
+  private refLabel(d: { providerAsset: string | null }) {
+    return isManualChannel(d.providerAsset) ? CHANNELS[d.providerAsset].refLabel : 'Transaction ID';
   }
 
   private async refundable(d: { creditedAmountUsd: Prisma.Decimal | null; refundedAmountUsd: Prisma.Decimal; employerUserId: string; status: string }) {
@@ -131,6 +138,7 @@ export class AdminDepositsService {
       fx_rate: d.fxRate ? dec(d.fxRate).toFixed(2) : null,
       pay_currency: d.payCurrency,
       tx_hash: d.txHash,
+      tx_ref_label: this.refLabel(d),
       confirmations: d.confirmations,
       failure_reason: d.failureReason,
       initiated_at: iso(d.initiatedAt),

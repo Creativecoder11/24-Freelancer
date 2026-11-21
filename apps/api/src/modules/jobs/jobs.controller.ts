@@ -15,6 +15,7 @@ const listQuery = z.object({
 });
 const quoteBody = z.object({ reward_usd: z.string().optional(), slots_total: z.number().int().optional(), boost_days: z.number().int().min(0).max(30).optional() });
 const publishBody = z.object({ posting_rules_accepted: z.boolean().optional(), expected_total_reserved_usd: z.string().optional(), expected_boost_fee_usd: z.string().optional() });
+const promoteBody = z.object({ kind: z.enum(['top', 'pin', 'combo']), expected_price_usd: z.string().max(20).optional() });
 const resumeBody = z.object({ expected_reserve_usd: z.string().optional() });
 const slotsBody = z.object({ add_slots: z.number().int(), expected_amount_usd: z.string().optional() });
 const marketQuery = z.object({ category: z.string().optional(), time_per_task: z.string().optional() });
@@ -41,7 +42,7 @@ export class JobsController {
     return this.jobs.categories();
   }
 
-  /** Post-a-job settings: minimum spend, boost prices, schedule limit. */
+  /** Post-a-job settings: minimum spend, schedule limit, promotion prices. */
   @Get('job-options')
   options() {
     return this.jobs.options();
@@ -114,6 +115,18 @@ export class JobsController {
     @Body(new ZodPipe(slotsBody)) body: z.infer<typeof slotsBody>,
   ) {
     return this.jobs.addSlots(uid, id, body, requireIdemKey(key));
+  }
+
+  /** Top ($5), Pin ($10) or Combo ($8) from the available balance (CR-2026-11b). */
+  @Post('jobs/:publicId/promote')
+  @HttpCode(200)
+  promote(
+    @CurrentUser('id') uid: string,
+    @Param('publicId') id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body(new ZodPipe(promoteBody)) body: z.infer<typeof promoteBody>,
+  ) {
+    return this.jobs.promote(uid, id, body, requireIdemKey(key));
   }
 
   @Post('jobs/:publicId/duplicate')

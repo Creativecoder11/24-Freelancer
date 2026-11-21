@@ -7,7 +7,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { api, apiFetch, ApiError } from '@/lib/api/client';
 
 export type JobStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled' | 'suspended';
-export type JobAction = 'continue' | 'duplicate' | 'delete' | 'review' | 'edit' | 'add_slots' | 'pause' | 'resume' | 'close' | 'view';
+export type JobAction = 'continue' | 'duplicate' | 'delete' | 'review' | 'edit' | 'add_slots' | 'promote' | 'pause' | 'resume' | 'close' | 'view';
 export type ReasonCode = 'proof_incomplete' | 'steps_not_followed' | 'wrong_or_copied' | 'link_not_accessible' | 'other';
 
 export interface Overview {
@@ -122,6 +122,10 @@ export interface JobDetail {
   boost_days: number;
   boost_fee_usd: string;
   boosted_until: string | null;
+  /** Last Top purchase (CR-2026-11b). */
+  topped_at: string | null;
+  /** Pinned above all jobs until this time. */
+  pinned_until: string | null;
   time_per_task: string;
   open_for_days: number;
   eligibility: 'all_verified' | 'kyc_verified';
@@ -149,10 +153,7 @@ export interface JobDetail {
 }
 
 export interface Quote {
-  boost_days: number;
-  boost_fee_usd: string;
-  boost_price_per_day_usd: string;
-  /** Reserve + boost: what leaves the available balance at publish. */
+  /** What leaves the available balance at publish (the reserve). */
   total_due_usd: string;
   min_spend_usd: string;
   below_min_spend: boolean;
@@ -187,6 +188,9 @@ export interface Performance {
     reward_usd: string;
     slots_total: number;
     slots_left: number;
+    /** Promotion state (CR-2026-11b). */
+    topped_at: string | null;
+    pinned_until: string | null;
     allowed_actions: JobAction[];
   };
   kpis: { to_review: number; approved: number; rejected: number; spent_usd: string; budget_left_usd: string; budget_total_usd: string; avg_review_hours: number | null };
@@ -273,14 +277,27 @@ export interface WalletSummary {
     remaining_daily_usd: string;
     card_max_usd: string;
     deposits_paused: boolean;
-    manual_bkash?: {
-      enabled: boolean;
-      number: string;
-      account_type: string;
-      instructions: string;
-      deposit_fx_rate: string;
-    };
+    /** Manual rails (CR-2026-11b): send money, then submit the sending account and reference. */
+    manual_channels: ManualChannel[];
+    default_channel: ManualChannelId | null;
   };
+}
+
+export type ManualChannelId = 'bkash' | 'nagad' | 'rocket' | 'binance_pay' | 'usdt_trc20';
+export interface ManualChannel {
+  channel: ManualChannelId;
+  label: string;
+  group: 'mobile_wallet' | 'crypto';
+  currency: 'BDT' | 'USD';
+  deposit_fx_rate: string | null;
+  account: string;
+  account_label: string;
+  account_type: string | null;
+  instructions: string;
+  sender_label: string;
+  sender_placeholder: string;
+  ref_label: string;
+  ref_placeholder: string;
 }
 
 export interface TxRow {
@@ -319,6 +336,8 @@ export interface DepositDetail {
   message_key: string;
   failure_reason: string | null;
   trx_id?: string | null;
+  /** What the reference is called on this rail ("bKash TrxID", "Binance Pay Order ID"…). */
+  trx_label?: string;
   sender_number?: string | null;
   return_to: string | null;
   balance: { deposit_balance_usd: string; available_usd: string };
@@ -381,14 +400,21 @@ export function useCategories() {
   return useQuery({ queryKey: ek.categories, queryFn: () => api.get<JobCategory[]>('/employer/job-categories'), staleTime: 3_600_000 });
 }
 
-/** Post-a-job settings (admin-editable): minimum spend, boost price and periods, schedule limit. */
+/** Post-a-job settings (admin-editable): minimum spend, schedule limit, promotion prices. */
 export interface JobOptions {
   min_spend_usd: string;
-  boost_price_per_day_usd: string;
-  boost_days_options: number[];
   schedule_max_days: number;
   open_for_days_options: number[];
+  promotion: PromotionOptions;
 }
+/** Top, Pin and Combo prices (CR-2026-11b). */
+export interface PromotionOptions {
+  top_price_usd: string;
+  pin_price_usd: string;
+  combo_price_usd: string;
+  pin_hours: number;
+}
+export type PromotionKind = 'top' | 'pin' | 'combo';
 export function useJobOptions() {
   return useQuery({ queryKey: ['employer', 'job-options'], queryFn: () => api.get<JobOptions>('/employer/job-options'), staleTime: 300_000 });
 }

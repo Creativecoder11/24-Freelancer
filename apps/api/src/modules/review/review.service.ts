@@ -337,18 +337,29 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Doc 04 §6.13: in_review, review_due_at ≤ now, job auto_approve, no dispute. One transaction per item. */
+  /**
+   * Approves and pays submissions nobody reviewed in time:
+   * - review window over on a job with auto-approve on, or
+   * - the job has ended (ends_at passed): everything still in review is approved, whatever the
+   *   employer's auto-approve setting (CR-2026-11b). Jobs suspended by an admin are skipped so a
+   *   fraud hold isn't paid out; disputed submissions follow the dispute.
+   */
   async autoApproveSweep() {
     const BATCH = 500;
     const ids = await this.db.$queryRaw<{ id: string }[]>`
       SELECT s.id FROM submissions s JOIN jobs j ON j.id = s.job_id
-      WHERE s.status = 'in_review' AND s.review_due_at <= now() AND j.auto_approve = true AND s.dispute_open = false
-      ORDER BY s.review_due_at LIMIT ${BATCH}`;
+      WHERE s.status = 'in_review' AND s.dispute_open = false
+        AND ((s.review_due_at <= now() AND j.auto_approve = true) OR (j.ends_at <= now() AND j.status <> 'suspended'))
+      ORDER BY LEAST(s.review_due_at, j.ends_at) LIMIT ${BATCH}`;
     const stats = { approved: 0, skipped: 0, failed: 0 };
     for (const { id } of ids) {
       try {
         const r = await this.db.$transaction(async (tx) => {
           const due = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM submissions WHERE id = ${id}::uuid AND status = 'in_review' AND review_due_at <= now() FOR UPDATE SKIP LOCKED`;
+            SELECT s.id FROM submissions s JOIN jobs j ON j.id = s.job_id
+            WHERE s.id = ${id}::uuid AND s.status = 'in_review' AND s.dispute_open = false
+              AND ((s.review_due_at <= now() AND j.auto_approve = true) OR (j.ends_at <= now() AND j.status <> 'suspended'))
+            FOR UPDATE OF s SKIP LOCKED`;
           if (!due.length) return null;
           return this.approval.approveInTx(tx, id, 'auto', {});
         });

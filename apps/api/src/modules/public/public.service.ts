@@ -13,13 +13,13 @@ import { PrismaService } from '../../common/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { ApiError } from '../../common/api-error';
 import { UploadsService } from '../uploads/uploads.service';
-import { BOOSTED_SQL, STARTED_SQL, proofLabel, toJobCard, type JobRowRaw } from './job-mapper';
+import { PINNED_SQL, PIN_FIRST_SQL, STARTED_SQL, TOPPED_THEN_NEWEST_SQL, proofLabel, toJobCard, type JobRowRaw } from './job-mapper';
 
 /** A-53 filter buckets on est_minutes. */
 const BUCKET_MINUTES: Record<string, number[]> = { under_5: [2, 5], '5_15': [10, 15], over_15: [30, 60] };
 
 const SORT_SQL: Record<string, Prisma.Sql> = {
-  newest: Prisma.sql`j.published_at DESC`,
+  newest: Prisma.raw(TOPPED_THEN_NEWEST_SQL),
   highest_reward: Prisma.sql`j.reward_usd DESC, j.published_at DESC`,
   shortest_time: Prisma.sql`j.display_minutes ASC, j.published_at DESC`,
   most_slots: Prisma.sql`j.slots_left DESC, j.published_at DESC`,
@@ -42,7 +42,7 @@ export class PublicService {
 
   // Scheduled jobs stay hidden until starts_at. Public pages show every location (workers are filtered).
   private liveWhere = Prisma.sql`j.status = 'running' AND j.ends_at > now() AND j.deleted_at IS NULL AND c.is_public AND (${Prisma.raw(STARTED_SQL)})`;
-  private boostedFirst = Prisma.sql`(${Prisma.raw(BOOSTED_SQL)}) DESC`;
+  private pinnedFirst = Prisma.raw(PIN_FIRST_SQL);
 
   private filterSql(q: Partial<PublicJobsQuery>, skip: 'category' | null = null) {
     const parts: Prisma.Sql[] = [this.liveWhere];
@@ -59,7 +59,7 @@ export class PublicService {
 
   private selectCols = Prisma.sql`j.public_id, j.title, c.slug AS category_slug, c.name AS category_name, e.business_name,
     (e.employer_verified_at IS NOT NULL) AS employer_verified, j.reward_usd::text AS reward_usd, j.display_minutes,
-    j.proof_types::text[] AS proof_types, j.slots_total, j.slots_left, j.published_at, j.ends_at, (${Prisma.raw(BOOSTED_SQL)}) AS is_boosted`;
+    j.proof_types::text[] AS proof_types, j.slots_total, j.slots_left, j.published_at, j.ends_at, (${Prisma.raw(PINNED_SQL)}) AS is_pinned, (j.topped_at IS NOT NULL) AS is_topped`;
 
   private fromSql = Prisma.sql`FROM jobs j JOIN categories c ON c.id = j.category_id JOIN employer_profiles e ON e.user_id = j.employer_user_id`;
 
@@ -77,7 +77,7 @@ export class PublicService {
     const page = Math.min(q.page, totalPages);
     const rows = await db.$queryRaw<JobRowRaw[]>`
       SELECT ${this.selectCols} ${this.fromSql} WHERE ${where}
-      ORDER BY ${this.boostedFirst}, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ORDER BY ${this.pinnedFirst}, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
     return {
       data: rows.map((r) => toJobCard(r, newMin)),
       meta: { total, page, per_page: perPage, total_pages: totalPages, has_more: page < totalPages, facets, applied_filters: q },
@@ -171,7 +171,7 @@ export class PublicService {
     const countRows = await db.$queryRaw<{ slug: string; n: number }[]>`
       SELECT c.slug, count(*)::int AS n ${this.fromSql} WHERE ${this.filterSql({ q: q.q })} GROUP BY c.slug ORDER BY n DESC`;
     const rows = await db.$queryRaw<JobRowRaw[]>`
-      SELECT ${this.selectCols} ${this.fromSql} WHERE ${where} ORDER BY ${this.boostedFirst}, j.published_at DESC LIMIT ${q.per_page} OFFSET ${offset}`;
+      SELECT ${this.selectCols} ${this.fromSql} WHERE ${where} ORDER BY ${this.pinnedFirst}, ${SORT_SQL.newest} LIMIT ${q.per_page} OFFSET ${offset}`;
     const next = offset + rows.length < total ? Buffer.from(String(offset + rows.length)).toString('base64url') : null;
     return {
       data: rows.map((r) => toJobCard(r, newMin)),

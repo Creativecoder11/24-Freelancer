@@ -22,12 +22,20 @@ export interface JobRowRaw {
   slots_left: number;
   published_at: Date | null;
   ends_at: Date | null;
-  /** Paid boost running (see BOOSTED_SQL). */
-  is_boosted?: boolean;
+  /** Pin running (see PINNED_SQL). */
+  is_pinned?: boolean;
+  /** Bought Top at least once (topped_at set). */
+  is_topped?: boolean;
 }
 
-/** Shared SQL bits for live listings (change request Nov 2026). */
-export const BOOSTED_SQL = 'j.boosted_until IS NOT NULL AND j.boosted_until > now()';
+/** Shared SQL bits for live listings (change requests Nov 2026). */
+/** A Pin is running. COALESCE: a never-pinned job (NULL) must sort below pinned ones, and
+ *  Postgres puts NULL first in DESC order. */
+export const PINNED_SQL = 'COALESCE(j.pinned_until > now(), false)';
+/** Listing rank (CR-2026-11b): pinned jobs first, then the newest Top, then the newest job. Other
+ *  sorts (reward, time…) keep pinned jobs first and then follow the sort the worker picked. */
+export const PIN_FIRST_SQL = `${PINNED_SQL} DESC`;
+export const TOPPED_THEN_NEWEST_SQL = 'j.topped_at DESC NULLS LAST, j.published_at DESC';
 export const STARTED_SQL = 'j.starts_at IS NULL OR j.starts_at <= now()';
 
 export function toJobCard(r: JobRowRaw, newBadgeMinutes: number): JobCard {
@@ -47,6 +55,7 @@ export function toJobCard(r: JobRowRaw, newBadgeMinutes: number): JobCard {
     slots_left: r.slots_left,
     published_at: published?.toISOString() ?? null,
     ends_at: r.ends_at ? new Date(r.ends_at).toISOString() : null,
-    is_boosted: !!r.is_boosted,
+    is_pinned: !!r.is_pinned,
+    is_topped: !!r.is_topped,
   };
 }

@@ -14,8 +14,10 @@ export interface JobRowData {
   slotsTotal: number;
   rewardLabel: string;
   isNew?: boolean;
-  /** Paid boost running: shown as "Top job". */
-  isBoosted?: boolean;
+  /** Pin running: shown as "Pinned" (listed above every other job). */
+  isPinned?: boolean;
+  /** Employer bought Top: shown as "Top job". */
+  isTopped?: boolean;
 }
 
 export interface JobRowProps {
@@ -44,7 +46,8 @@ export function JobRow({ job, href, ctaLabel = 'View', className }: JobRowProps)
                 {job.title}
               </NextLink>
             </p>
-            {job.isBoosted ? <StatusBadge tone="success" label="Top job" className="shrink-0" /> : null}
+            {job.isPinned ? <StatusBadge tone="brand" label="Pinned" className="shrink-0" /> : null}
+            {job.isTopped && !job.isPinned ? <StatusBadge tone="success" label="Top job" className="shrink-0" /> : null}
             {job.isNew ? <StatusBadge tone="brand" label="New" className="shrink-0" /> : null}
           </div>
           <p className="mt-0.5 truncate text-body-xs text-fg-tertiary">

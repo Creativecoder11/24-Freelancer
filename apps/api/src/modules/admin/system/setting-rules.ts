@@ -30,10 +30,13 @@ export const SETTING_RULES: Record<string, SettingRule> = {
   job_id_prefix: r('jobs', 'string', 'C3', 'New job IDs only', { enum: undefined, maxLen: 3, superOnly: true }),
   job_new_badge_minutes: r('jobs', 'integer', 'C1', 'Immediately', { min: 0, max: 1440 }),
   open_for_days_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 1, max: 90 }),
-  // Post-a-job change request (Nov 2026): minimum spend, paid boost, scheduled start.
+  // Post-a-job change request (Nov 2026): minimum spend, scheduled start.
   job_min_spend_usd: r('jobs', 'number', 'C2', 'Jobs published after the change', { min: 0, max: 1000, dp: 2 }),
-  boost_price_per_day_usd: r('jobs', 'number', 'C2', 'Jobs published after the change', { min: 0, max: 1000, dp: 2 }),
-  boost_days_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 1, max: 30 }),
+  // Job promotion (CR-2026-11b): Top, Pin, Combo prices and Pin length.
+  job_top_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
+  job_pin_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
+  job_combo_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
+  job_pin_hours: r('jobs', 'integer', 'C1', 'New purchases', { min: 1, max: 720 }),
   job_schedule_max_days: r('jobs', 'integer', 'C1', 'New jobs', { min: 1, max: 90 }),
   min_approval_rate_options: r('jobs', 'json', 'C1', 'New jobs', { list: 'int', min: 0, max: 100 }),
   slot_hold_minutes: r('jobs', 'integer', 'C1', 'New reservations', { min: 5, max: 1440 }),
@@ -99,6 +102,17 @@ export const SETTING_RULES: Record<string, SettingRule> = {
   bkash_manual_number: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 30 }),
   bkash_manual_account_type: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 60 }),
   bkash_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  // Manual deposits on more rails (CR-2026-11b). An empty account hides the method on Add funds.
+  nagad_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  nagad_manual_number: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 30 }),
+  nagad_manual_account_type: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 60 }),
+  rocket_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  rocket_manual_number: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 30 }),
+  rocket_manual_account_type: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 60 }),
+  binance_pay_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  binance_pay_manual_id: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
+  usdt_trc20_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  usdt_trc20_manual_address: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
 
   withdrawal_daily_max_usd: r('withdrawals', 'number', 'C3', 'New requests', { min: 1, max: 1000000, dp: 2, superOnly: true }),
   withdrawal_daily_count_max: r('withdrawals', 'integer', 'C2', 'New requests', { min: 1, max: 50, superOnly: true }),

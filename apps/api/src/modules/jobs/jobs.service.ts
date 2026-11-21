@@ -97,8 +97,6 @@ export class JobsService {
       reviewWindows: await s.get<number[]>('review_window_options_hours', [24, 48, 72]),
       shorteners: await s.get<string[]>('url_shortener_domains', []),
       minSpendUsd: String(await s.get('job_min_spend_usd', '0.80')),
-      boostDaysOptions: await s.get<number[]>('boost_days_options', [1, 3, 7]),
-      boostPricePerDayUsd: String(await s.get('boost_price_per_day_usd', '0.50')),
       scheduleMaxDays: await s.number('job_schedule_max_days', 30),
     };
   }
@@ -115,11 +113,6 @@ export class JobsService {
     });
     const categorySubcount = j.categoryId ? await tx.subcategory.count({ where: { categoryId: j.categoryId, isActive: true } }) : 0;
     return { ...j, categorySubcount } as JobFull;
-  }
-
-  /** Boost fee for a number of days at the current price (0 days = no boost). */
-  boostFee(days: number, lim: JobLimits) {
-    return days > 0 ? new Decimal(lim.boostPricePerDayUsd).mul(days) : new Decimal(0);
   }
 
   private async newPublicId(tx: Tx) {
@@ -166,6 +159,8 @@ export class JobsService {
       boost_days: j.boostDays,
       boost_fee_usd: usd2(j.boostFeeUsd),
       boosted_until: j.boostedUntil?.toISOString() ?? null,
+      topped_at: j.toppedAt?.toISOString() ?? null,
+      pinned_until: j.pinnedUntil?.toISOString() ?? null,
       time_per_task: j.timePerTask,
       open_for_days: j.openForDays,
       eligibility: j.eligibility,
@@ -339,10 +334,8 @@ export class JobsService {
     if (b.target_zone !== undefined && !jobZone(b.target_zone)) errs.target_zone = ['Choose where workers can be.'];
     if (b.excluded_countries?.some((c) => !isKnownCountry(c.toUpperCase()))) errs.excluded_countries = ['Pick countries from the list.'];
     if (b.note && [...b.note.trim()].length > 300) errs.note = ['Keep the note under 300 characters.'];
-    if (b.boost_days !== undefined && b.boost_days !== 0 && !lim.boostDaysOptions.includes(b.boost_days)) errs.boost_days = ['Choose a boost period.'];
-    if ((b.boost_days !== undefined || b.starts_at !== undefined) && job.status !== 'draft') {
-      // Boost is charged and the start time fixed at publish.
-      if (b.boost_days !== undefined && b.boost_days !== job.boostDays) errs.boost_days = ['Boost can only be set before publishing.'];
+    if (b.starts_at !== undefined && job.status !== 'draft') {
+      // The start time is fixed at publish.
       if (b.starts_at !== undefined && (b.starts_at ? new Date(b.starts_at).getTime() : null) !== (job.startsAt?.getTime() ?? null)) errs.starts_at = ['The start time can only be set before publishing.'];
     }
     if (b.proof_requirements && b.proof_requirements.filter((p) => p.proof_type === 'screenshot').length > MAX_SCREENSHOTS) errs.proof_requirements = [`Ask for at most ${MAX_SCREENSHOTS} screenshots.`];
@@ -381,7 +374,6 @@ export class JobsService {
       }
       data.thumbnailUploadId = b.thumbnail_upload_id || null;
     }
-    if (b.boost_days !== undefined && job.status === 'draft') data.boostDays = b.boost_days;
     if (b.starts_at !== undefined && job.status === 'draft') data.startsAt = b.starts_at ? new Date(b.starts_at) : null;
     if (b.time_per_task) {
       data.timePerTask = b.time_per_task;
@@ -591,10 +583,9 @@ export class JobsService {
     const fee = feeFor(reward, feePercent);
     const unit = reward.plus(fee);
     const total = unit.mul(slots);
-    // Boost is a one-off charge at publish (drafts only; a published job shows what it paid).
-    const boostDays = j.status === 'draft' ? (body.boost_days !== undefined && (body.boost_days === 0 || lim.boostDaysOptions.includes(body.boost_days)) ? body.boost_days : j.boostDays) : j.boostDays;
-    const boostFee = j.status === 'draft' ? this.boostFee(boostDays, lim) : dec(j.boostFeeUsd);
-    const due = j.status === 'draft' ? total.plus(boostFee) : total;
+    // The per-day boost was replaced by Top / Pin / Combo on running jobs (CR-2026-11b): publish
+    // reserves the budget only.
+    const due = total;
     const { available } = await this.core.balances(userId);
     const receivable = (await this.db.employerProfile.findUnique({ where: { userId }, select: { receivableUsd: true } }))?.receivableUsd;
     const shortfall = Decimal.max(0, due.minus(available));
@@ -606,9 +597,6 @@ export class JobsService {
     const incomplete = firstIncompleteStep({ ...j, rewardUsd: new Prisma.Decimal(reward.toFixed(6)), slotsTotal: slots }, lim);
     if (incomplete) blockers.push('job_incomplete');
     return {
-      boost_days: boostDays,
-      boost_fee_usd: usd2(boostFee),
-      boost_price_per_day_usd: usd2(lim.boostPricePerDayUsd),
       total_due_usd: usd2(due),
       min_spend_usd: usd2(lim.minSpendUsd),
       below_min_spend: belowMin,
@@ -663,12 +651,9 @@ export class JobsService {
       const total = unit.mul(job.slotsTotal ?? 0);
       if (body.expected_total_reserved_usd === undefined || !this.sameAmount(body.expected_total_reserved_usd, total))
         throw new ApiError('QUOTE_CHANGED', undefined, undefined, { total_reserved_usd: usd2(total) });
-      const boostFee = this.boostFee(job.boostDays, lim);
-      if (boostFee.gt(0) && (body.expected_boost_fee_usd === undefined || !this.sameAmount(body.expected_boost_fee_usd, boostFee)))
-        throw new ApiError('QUOTE_CHANGED', 'The boost price changed. Check the new total and publish again.', undefined, { total_reserved_usd: usd2(total), boost_fee_usd: usd2(boostFee) });
       const acc = await this.core.lockAccounts(userId, tx);
-      if (acc.availableBal.lt(total.plus(boostFee))) {
-        const short = total.plus(boostFee).minus(acc.availableBal);
+      if (acc.availableBal.lt(total)) {
+        const short = total.minus(acc.availableBal);
         throw new ApiError('INSUFFICIENT_BALANCE', `You need $${usd2Up(short)} more to publish. Add funds or lower the slots or reward.`, undefined, {
           shortfall_usd: usd2Up(short),
           available_usd: usd2(acc.availableBal),
@@ -683,25 +668,6 @@ export class JobsService {
         { title: job.title, slots: job.slotsTotal, reward: usd3(job.rewardUsd), ...(feePercent > 0 ? { fee_percent: String(feePercent) } : {}) },
         { userId },
       );
-      // Paid boost: one-off platform fee from the available balance (not refunded on pause or close).
-      if (boostFee.gt(0)) {
-        const revenue = await this.core.ledger.systemAccount('platform_revenue', tx);
-        await this.core.ledger.post(
-          {
-            type: 'platform_fee',
-            idempotencyKey: `job:${job.publicId}:boost`,
-            actor: 'user',
-            userId,
-            description: { title: job.title, kind: 'boost', days: job.boostDays },
-            refs: { jobId: job.id },
-            lines: [
-              { accountId: acc.available.id, amount: boostFee.neg().toFixed(6) },
-              { accountId: revenue.id, amount: boostFee.toFixed(6) },
-            ],
-          },
-          tx,
-        );
-      }
       const now = new Date();
       // Scheduled jobs go live at starts_at (listings hide them until then); otherwise now.
       const liveAt = job.startsAt && job.startsAt > now ? job.startsAt : now;
@@ -716,8 +682,9 @@ export class JobsService {
           publishedAt: liveAt,
           startsAt: job.startsAt && job.startsAt > now ? job.startsAt : null,
           endsAt: new Date(liveAt.getTime() + job.openForDays * DAY),
-          boostFeeUsd: new Prisma.Decimal(boostFee.toFixed(6)),
-          boostedUntil: job.boostDays > 0 ? new Date(liveAt.getTime() + job.boostDays * DAY) : null,
+          boostDays: 0,
+          boostFeeUsd: new Prisma.Decimal(0),
+          boostedUntil: null,
           postingRulesAcceptedAt: now,
           rules: (job.rules ?? DEFAULT_RULES) as Prisma.InputJsonValue,
           moderationFlags: screen.result === 'flag' ? (screen.hits as Prisma.InputJsonValue) : Prisma.JsonNull,
@@ -738,7 +705,6 @@ export class JobsService {
         published_at: fresh.publishedAt!.toISOString(),
         ends_at: fresh.endsAt!.toISOString(),
         total_reserved_usd: usd2(total),
-        boost_fee_usd: usd2(boostFee),
         starts_at: fresh.startsAt?.toISOString() ?? null,
         ledger_ref: t?.publicRef ?? null,
         available_after_usd: usd2(after.available),
@@ -996,6 +962,8 @@ export class JobsService {
         reward_usd: usd3(j.rewardUsd),
         slots_total: j.slotsTotal ?? 0,
         slots_left: slotsLeftOf(j),
+        topped_at: j.toppedAt?.toISOString() ?? null,
+        pinned_until: j.pinnedUntil?.toISOString() ?? null,
         allowed_actions: allowedActions(j),
       },
       kpis: {
@@ -1073,10 +1041,89 @@ export class JobsService {
     const lim = await this.limits();
     return {
       min_spend_usd: usd2(lim.minSpendUsd),
-      boost_price_per_day_usd: usd2(lim.boostPricePerDayUsd),
-      boost_days_options: lim.boostDaysOptions,
       schedule_max_days: lim.scheduleMaxDays,
       open_for_days_options: lim.openForDays,
+      promotion: await this.promotionOptions(),
+    };
+  }
+
+  // ---------------------------------------------------------------- promotion (CR-2026-11b)
+
+  /** Top, Pin and Combo prices and how long a Pin lasts (admin settings). */
+  async promotionOptions() {
+    const s = this.settings;
+    return {
+      top_price_usd: usd2(new Decimal(String(await s.get('job_top_price_usd', '5.00')))),
+      pin_price_usd: usd2(new Decimal(String(await s.get('job_pin_price_usd', '10.00')))),
+      combo_price_usd: usd2(new Decimal(String(await s.get('job_combo_price_usd', '8.00')))),
+      pin_hours: await s.number('job_pin_hours', 24),
+    };
+  }
+
+  /**
+   * Buys Top, Pin or Combo for a live running job from the available balance (a platform fee, not
+   * refunded). Top sets topped_at = now, so the job ranks above every earlier Top. Pin keeps it
+   * above all jobs for pin_hours; buying again extends from the current end. The client's
+   * Idempotency-Key is part of the ledger key, so a retry returns the first result, never a second
+   * charge.
+   */
+  async promote(userId: string, publicId: string, body: { kind: 'top' | 'pin' | 'combo'; expected_price_usd?: string }, idemKey: string) {
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true } });
+    if (user.status !== 'active') throw new ApiError('ACCOUNT_RESTRICTED');
+    const own = await this.core.ownJob(userId, publicId);
+    const opts = await this.promotionOptions();
+    const price = new Decimal({ top: opts.top_price_usd, pin: opts.pin_price_usd, combo: opts.combo_price_usd }[body.kind]);
+    if (body.expected_price_usd !== undefined && !this.sameAmount(body.expected_price_usd, price))
+      throw new ApiError('QUOTE_CHANGED', `The price is now $${usd2(price)}. Check it and try again.`, undefined, { price_usd: usd2(price) });
+    const key = `job:${publicId}:promote:${idemKey}`;
+    const out = await this.db.$transaction(async (tx) => {
+      const job = await this.core.lockJob(tx, own.id);
+      if (await tx.ledgerTransaction.findUnique({ where: { idempotencyKey: key }, select: { id: true } })) return { job, replayed: true };
+      if (job.status === 'suspended') throw new ApiError('JOB_SUSPENDED', undefined, undefined, { reason: job.suspensionReason });
+      const now = new Date();
+      if (job.status !== 'running' || !job.endsAt || job.endsAt <= now) throw new ApiError('INVALID_STATE', 'Only running jobs can be promoted.');
+      if (job.startsAt && job.startsAt > now) throw new ApiError('INVALID_STATE', 'This job hasn’t started yet. Promote it once it’s live.');
+      const acc = await this.core.lockAccounts(userId, tx);
+      if (acc.availableBal.lt(price)) {
+        const short = price.minus(acc.availableBal);
+        throw new ApiError('INSUFFICIENT_BALANCE', `You need $${usd2Up(short)} more for this promotion. Add funds first.`, undefined, {
+          shortfall_usd: usd2Up(short),
+          available_usd: usd2(acc.availableBal),
+        });
+      }
+      const revenue = await this.core.ledger.systemAccount('platform_revenue', tx);
+      await this.core.ledger.post(
+        {
+          type: 'platform_fee',
+          idempotencyKey: key,
+          actor: 'user',
+          userId,
+          description: { title: job.title, kind: 'promotion', promotion: body.kind },
+          refs: { jobId: job.id },
+          lines: [
+            { accountId: acc.available.id, amount: price.neg().toFixed(6) },
+            { accountId: revenue.id, amount: price.toFixed(6) },
+          ],
+        },
+        tx,
+      );
+      const data: Prisma.JobUpdateInput = { version: { increment: 1 } };
+      if (body.kind !== 'pin') data.toppedAt = now;
+      if (body.kind !== 'top') {
+        const from = job.pinnedUntil && job.pinnedUntil > now ? job.pinnedUntil : now;
+        data.pinnedUntil = new Date(from.getTime() + opts.pin_hours * 3_600_000);
+      }
+      return { job: await tx.job.update({ where: { id: job.id }, data }), replayed: false };
+    });
+    const { available } = await this.core.balances(userId);
+    return {
+      public_id: publicId,
+      kind: body.kind,
+      price_usd: usd2(price),
+      topped_at: out.job.toppedAt?.toISOString() ?? null,
+      pinned_until: out.job.pinnedUntil?.toISOString() ?? null,
+      available_usd: usd2(available),
+      replayed: out.replayed,
     };
   }
 

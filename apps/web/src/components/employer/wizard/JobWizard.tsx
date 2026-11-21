@@ -271,16 +271,14 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
 
   // ---------------------------------------------------------------- quote
 
-  const quote = useDebouncedQuote(publicId, step >= LAST_FORM_STEP ? form.reward_usd : null, form.slots_total, published ? undefined : form.boost_days);
+  const quote = useDebouncedQuote(publicId, step >= LAST_FORM_STEP ? form.reward_usd : null, form.slots_total);
   const reward = Number(form.reward_usd) || 0;
   const localTotal = reward * form.slots_total;
-  const pricePerDay = Number(options.data?.boost_price_per_day_usd ?? 0);
-  const localBoost = published ? Number(job?.boost_fee_usd ?? 0) : form.boost_days * pricePerDay;
   const total = quote.data ? Number(quote.data.total_reserved_exact_usd) : localTotal;
-  const boostFee = quote.data ? Number(quote.data.boost_fee_usd) : localBoost;
-  const due = published ? total : total + boostFee;
+  // Publishing only reserves the budget. Top / Pin are bought later on the running job.
+  const due = total;
   const available = quote.data ? Number(quote.data.available_usd) : Number(wallet.data?.available_usd ?? 0);
-  const shortfall = quote.data ? Number(quote.data.shortfall_usd) : Math.max(0, localTotal + localBoost - available);
+  const shortfall = quote.data ? Number(quote.data.shortfall_usd) : Math.max(0, localTotal - available);
   const totalLabel = quote.data ? formatMoney(quote.data.total_reserved_usd) : money(localTotal);
   const dueLabel = quote.data && !published ? formatMoney(quote.data.total_due_usd) : money(due);
   const minSpend = Number(quote.data?.min_spend_usd ?? options.data?.min_spend_usd ?? 0);
@@ -288,22 +286,20 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
 
   const publish = useMutation({
     mutationFn: () =>
-      api.post<{ public_id: string; total_reserved_usd: string; boost_fee_usd: string; starts_at: string | null }>(
+      api.post<{ public_id: string; total_reserved_usd: string; starts_at: string | null }>(
         `/employer/jobs/${publicId}/publish`,
         {
           posting_rules_accepted: true,
           expected_total_reserved_usd: quote.data?.total_reserved_usd ?? localTotal.toFixed(2),
-          ...(form.boost_days > 0 ? { expected_boost_fee_usd: quote.data?.boost_fee_usd ?? localBoost.toFixed(2) } : {}),
         },
         { headers: { 'Idempotency-Key': idemKey() } },
       ),
     onSuccess: async (r) => {
       setDirty(false);
-      const boosted = Number(r.boost_fee_usd) > 0 ? ` Boost ${formatMoney(r.boost_fee_usd)} charged.` : '';
       toast.show({
         tone: 'success',
         title: r.starts_at ? 'Job scheduled' : 'Job published',
-        body: `${formatMoney(r.total_reserved_usd)} is reserved from your deposit.${boosted}${r.starts_at ? ` Goes live ${new Date(r.starts_at).toLocaleString()}.` : ''}`,
+        body: `${formatMoney(r.total_reserved_usd)} is reserved from your deposit.${r.starts_at ? ` Goes live ${new Date(r.starts_at).toLocaleString()}.` : ''}`,
       });
       await invalidateEmployer(qc);
       router.push(`/employer/jobs/${r.public_id}`);
@@ -341,7 +337,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
     1: ['Where should workers be?', 'Pick a zone. You can hide individual countries inside it.'],
     2: ['What kind of job is it?', 'Choose a category and a subcategory so the right workers find it.'],
     3: ['Tell workers exactly what to do', 'A clear title and numbered steps cut rejections. Workers tick each step before they can submit.'],
-    4: ['Set your budget and settings', 'You pay the reward for each approved task. Nothing is charged until work is approved (boost is charged at publish).'],
+    4: ['Set your budget and settings', 'You pay the reward for each approved task. Nothing is charged until work is approved.'],
     5: ['Review and publish', 'Check everything once more. You can edit the job until the first submission arrives.'],
   };
 
@@ -384,8 +380,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
                 job={job}
                 options={options.data ?? null}
                 totalLabel={money(localTotal)}
-                boostFee={boostFee}
-                dueLabel={money(published ? localTotal : localTotal + localBoost)}
+                dueLabel={money(localTotal)}
                 belowMin={belowMin}
                 minSpend={minSpend}
                 shortfall={shortfall}
@@ -398,8 +393,6 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
                 catName={cat?.name ?? '—'}
                 subName={subName}
                 totalLabel={totalLabel}
-                boostFee={boostFee}
-                dueLabel={dueLabel}
                 job={job}
                 hrefFor={(n) => `${base(publicId)}?step=${n}`}
                 confirm={confirmRules}
@@ -491,7 +484,6 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
           minutes={minutes}
           quote={quote.data ?? null}
           total={total}
-          boostFee={boostFee}
           due={due}
           depositBalance={wallet.data?.deposit_balance_usd ?? null}
           available={available}
@@ -505,7 +497,6 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
         title={form.starts_at ? 'Schedule this job?' : 'Publish this job?'}
         description={[
           `We’ll reserve ${totalLabel} from your deposit (${form.slots_total} slots × ${formatReward(form.reward_usd || '0')}). Unused budget returns to your deposit when the job closes.`,
-          boostFee > 0 ? `Boost (${plural(form.boost_days, 'day')}) costs ${money(boostFee)}, charged now and not refunded.` : '',
           form.starts_at ? `Workers see it from ${new Date(form.starts_at).toLocaleString()}.` : '',
         ]
           .filter(Boolean)
@@ -533,19 +524,19 @@ const STEP_FIELDS: Record<number, string[]> = {
   1: ['target_zone', 'excluded_countries'],
   2: ['category', 'subcategory'],
   3: ['title', 'note', 'time_per_task', 'steps', 'task_link_url', 'proof_requirements', 'proof_instructions', 'thumbnail_upload_id'],
-  4: ['reward_usd', 'slots_total', 'open_for_days', 'eligibility', 'min_approval_rate', 'review_window_hours', 'boost_days', 'starts_at'],
+  4: ['reward_usd', 'slots_total', 'open_for_days', 'eligibility', 'min_approval_rate', 'review_window_hours', 'starts_at'],
 };
 
-function useDebouncedQuote(publicId: string | null, reward: string | null, slots: number, boostDays: number | undefined) {
-  const [args, setArgs] = useState<{ reward: string | null; slots: number; boostDays: number | undefined }>({ reward, slots, boostDays });
+function useDebouncedQuote(publicId: string | null, reward: string | null, slots: number) {
+  const [args, setArgs] = useState<{ reward: string | null; slots: number }>({ reward, slots });
   useEffect(() => {
-    const t = setTimeout(() => setArgs({ reward, slots, boostDays }), 350);
+    const t = setTimeout(() => setArgs({ reward, slots }), 350);
     return () => clearTimeout(t);
-  }, [reward, slots, boostDays]);
+  }, [reward, slots]);
   const valid = !!args.reward && /^\d+(\.\d{1,3})?$/.test(args.reward) && Number(args.reward) > 0 && args.slots >= 1;
   return useQuery({
-    queryKey: ['employer', 'quote', publicId, args.reward, args.slots, args.boostDays],
-    queryFn: () => api.post<Quote>(`/employer/jobs/${publicId}/quote`, { reward_usd: args.reward, slots_total: args.slots, ...(args.boostDays !== undefined ? { boost_days: args.boostDays } : {}) }),
+    queryKey: ['employer', 'quote', publicId, args.reward, args.slots],
+    queryFn: () => api.post<Quote>(`/employer/jobs/${publicId}/quote`, { reward_usd: args.reward, slots_total: args.slots }),
     enabled: !!publicId && valid,
     placeholderData: (p) => p,
     staleTime: 10_000,
@@ -874,7 +865,7 @@ function StepInfo({ form, set, patch, errors, locked }: { form: WizardForm; set:
   );
 }
 
-/** Step 4 · Budget & settings: workers, reward, days, eligibility, review, boost, schedule. */
+/** Step 4 · Budget & settings: workers, reward, days, eligibility, review, schedule. */
 function StepBudget({
   form,
   set,
@@ -884,7 +875,6 @@ function StepBudget({
   job,
   options,
   totalLabel,
-  boostFee,
   dueLabel,
   belowMin,
   minSpend,
@@ -899,7 +889,6 @@ function StepBudget({
   job: JobDetail | null;
   options: JobOptions | null;
   totalLabel: string;
-  boostFee: number;
   dueLabel: string;
   belowMin: boolean;
   minSpend: number;
@@ -913,8 +902,6 @@ function StepBudget({
     staleTime: 300_000,
   });
   const m = market.data;
-  const price = Number(options?.boost_price_per_day_usd ?? 0);
-  const boostOptions = [{ value: '0', label: 'None' }, ...(options?.boost_days_options ?? [1, 3, 7]).map((d) => ({ value: String(d), label: `${plural(d, 'day')} · ${money(d * price)}` }))];
   const openFor = options?.open_for_days_options ?? OPEN_FOR;
   return (
     <>
@@ -962,15 +949,6 @@ function StepBudget({
         />
       </div>
       <div data-wz className="grid gap-5 tablet:grid-cols-2 tablet:gap-4">
-        <Select
-          label="Boost period (optional)"
-          options={boostOptions}
-          value={String(form.boost_days)}
-          onChange={(v) => set('boost_days', Number(v))}
-          disabled={published}
-          helper={published ? (job?.boost_days ? `Boosted ${plural(job.boost_days, 'day')} at publish.` : 'Boost can only be added before publishing.') : 'Pins the job at the top as “Top job”. Charged at publish.'}
-          error={errors.boost_days}
-        />
         <Field
           label="Schedule time"
           optional
@@ -1003,12 +981,6 @@ function StepBudget({
             </dt>
             <dd className="tabular-nums text-fg">{totalLabel}</dd>
           </div>
-          {boostFee > 0 ? (
-            <div className="flex justify-between gap-3">
-              <dt className="text-fg-secondary">Boost · {plural(form.boost_days || job?.boost_days || 0, 'day')}</dt>
-              <dd className="tabular-nums text-fg">{money(boostFee)}</dd>
-            </div>
-          ) : null}
         </dl>
         <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-line-subtle pt-2">
           <span className="text-label-md text-fg">Total</span>
@@ -1031,8 +1003,6 @@ function StepReview({
   catName,
   subName,
   totalLabel,
-  boostFee,
-  dueLabel,
   job,
   hrefFor,
   confirm,
@@ -1043,8 +1013,6 @@ function StepReview({
   catName: string;
   subName: string | null;
   totalLabel: string;
-  boostFee: number;
-  dueLabel: string;
   job: JobDetail | null;
   hrefFor: (n: number) => string;
   confirm: boolean;
@@ -1053,7 +1021,6 @@ function StepReview({
 }) {
   const link = form.task_link_url.replace(/^https?:\/\//, '');
   const steps = form.steps.filter((s) => s.body.trim()).length;
-  const boostDays = published ? (job?.boost_days ?? 0) : form.boost_days;
   const startsAt = published ? job?.starts_at : form.starts_at ? new Date(form.starts_at).toISOString() : null;
   const sections: { title: string; step: number; rows: [string, string][] }[] = [
     { title: 'Location', step: 1, rows: [['Workers in', targetingLabel(form.target_zone, form.excluded_countries)]] },
@@ -1077,10 +1044,8 @@ function StepReview({
         ['Workers', `${plural(form.slots_total, 'worker')} × ${formatReward(form.reward_usd || '0')}`],
         ['Open for', `${plural(form.open_for_days, 'day')} · ${form.min_approval_rate ? `${form.min_approval_rate}%+ approval rate` : 'any approval rate'}`],
         ['Review window', `${form.review_window_hours} hours · auto-approve ${form.auto_approve ? 'on' : 'off'}`],
-        ['Boost', boostDays ? `${plural(boostDays, 'day')} · ${money(boostFee)}` : 'None'],
         ['Starts', startsAt ? new Date(startsAt).toLocaleString() : 'When published'],
         ['Total reserved', totalLabel],
-        ...(!published && boostFee > 0 ? ([['Total today', dueLabel]] as [string, string][]) : []),
       ],
     },
   ];
@@ -1131,7 +1096,6 @@ function Rail({
   minutes,
   quote,
   total,
-  boostFee,
   due,
   depositBalance,
   available,
@@ -1144,7 +1108,6 @@ function Rail({
   minutes: number;
   quote: Quote | null;
   total: number;
-  boostFee: number;
   due: number;
   depositBalance: string | null;
   available: number;
@@ -1170,7 +1133,6 @@ function Rail({
               slotsTotal: form.slots_total,
               rewardLabel: reward,
               isNew,
-              isBoosted: form.boost_days > 0,
             }}
           />
         </ul>
@@ -1207,7 +1169,6 @@ function Rail({
               <>
                 <Row k={`${form.slots_total} slots × ${reward}`} v={quote ? formatMoney(quote.max_spend_usd) : money(Number(form.reward_usd || 0) * form.slots_total)} />
                 <Row k="Platform fee" v={fee} />
-                {boostFee > 0 ? <Row k="Boost" v={money(boostFee)} /> : null}
                 <Row k="Deposit balance" v={depositBalance ? formatMoney(depositBalance) : '—'} />
               </>
             ) : (
@@ -1219,7 +1180,7 @@ function Rail({
           </dl>
           <div className="mt-4 border-t border-line-subtle pt-4">
             <div className="flex items-center justify-between">
-              <span className="text-label-md text-fg">{boostFee > 0 ? 'Total today' : 'Total reserved'}</span>
+              <span className="text-label-md text-fg">Total reserved</span>
               {hasBudget && due > 0 ? (
                 <span className="font-display text-num-lg tabular-nums text-fg-brand">
                   <CountUp value={due} format={(n) => money(n)} key={money(due)} />
@@ -1230,7 +1191,7 @@ function Rail({
             </div>
             <p className="mt-2 text-body-xs text-fg-tertiary">
               {hasBudget && total > 0
-                ? `${available < Number(depositBalance ?? available) ? 'Available' : 'Deposit'} after publishing: ${money(Math.max(0, available - due))}. Unused budget returns to your deposit when the job closes${boostFee > 0 ? '; boost isn’t refunded' : ''}.`
+                ? `${available < Number(depositBalance ?? available) ? 'Available' : 'Deposit'} after publishing: ${money(Math.max(0, available - due))}. Unused budget returns to your deposit when the job closes.`
                 : `Your deposit balance: ${depositBalance ? formatMoney(depositBalance) : '—'}`}
             </p>
           </div>

@@ -20,14 +20,14 @@ import { formatMoney, formatReward, jobVisibleIn } from '@24f/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { ApiError } from '../../common/api-error';
 import { SettingsService } from '../settings/settings.service';
-import { BOOSTED_SQL, STARTED_SQL, proofLabel, toJobCard, type JobRowRaw } from '../public/job-mapper';
+import { PINNED_SQL, PIN_FIRST_SQL, STARTED_SQL, TOPPED_THEN_NEWEST_SQL, proofLabel, toJobCard, type JobRowRaw } from '../public/job-mapper';
 import { UploadsService } from '../uploads/uploads.service';
 import { ReservationsService } from '../reservations/reservations.service';
 import { dhakaMonthBounds, employerTrust, isUniqueViolation, iso, reward3, trendPercent, usd2 } from './worker-common';
 
 const BUCKET_MINUTES: Record<string, number[]> = { under_5: [2, 5], '5_15': [10, 15], over_15: [30, 60] };
 const SORT_SQL: Record<string, Prisma.Sql> = {
-  newest: Prisma.sql`j.published_at DESC`,
+  newest: Prisma.raw(TOPPED_THEN_NEWEST_SQL),
   highest_reward: Prisma.sql`j.reward_usd DESC, j.published_at DESC`,
   shortest_time: Prisma.sql`j.display_minutes ASC, j.published_at DESC`,
   most_slots: Prisma.sql`j.slots_left DESC, j.published_at DESC`,
@@ -49,7 +49,8 @@ interface WorkerCtx {
   country: string;
 }
 
-const BOOSTED = Prisma.raw(BOOSTED_SQL);
+const PINNED = Prisma.raw(PINNED_SQL);
+const PIN_FIRST = Prisma.raw(PIN_FIRST_SQL);
 const STARTED = Prisma.raw(STARTED_SQL);
 
 /** Worker jobs and overview (Doc 06 §5.6, Doc 04 §4.3). */
@@ -115,7 +116,7 @@ export class WorkerService {
     return Prisma.sql`j.id, j.public_id, j.title, c.slug AS category_slug, c.name AS category_name, e.business_name,
       (e.employer_verified_at IS NOT NULL) AS employer_verified, j.reward_usd::text AS reward_usd, j.display_minutes,
       j.proof_types::text[] AS proof_types, j.slots_total, GREATEST(j.slots_left, 0) AS slots_left, j.published_at, j.ends_at,
-      j.eligibility::text AS eligibility, j.min_approval_rate, (${BOOSTED}) AS is_boosted,
+      j.eligibility::text AS eligibility, j.min_approval_rate, (${PINNED}) AS is_pinned, (j.topped_at IS NOT NULL) AS is_topped,
       EXISTS (SELECT 1 FROM submissions s WHERE s.job_id = j.id AND s.worker_user_id = ${c.userId}::uuid) AS done,
       EXISTS (SELECT 1 FROM slot_reservations r WHERE r.job_id = j.id AND r.worker_user_id = ${c.userId}::uuid AND r.status = 'active' AND r.expires_at > now()) AS in_progress`;
   }
@@ -160,7 +161,7 @@ export class WorkerService {
     const page = Math.min(q.page, totalPages);
     const rows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
       SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(q, c)}
-      ORDER BY (${BOOSTED}) DESC, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
+      ORDER BY ${PIN_FIRST}, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
     return {
       data: rows.map((r) => this.card(r, c, newMin)),
       meta: { total, page, per_page: perPage, total_pages: totalPages, has_more: page < totalPages, counts, facets, applied_filters: applied },
@@ -207,7 +208,7 @@ export class WorkerService {
     // Recommended: interests first, newest otherwise (FR-WJOB-003).
     const recQ: Partial<WorkerJobsQuery> = { chip: c.interests.length ? 'for_you' : 'all', only_open: true, hide_done: true };
     const recRows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
-      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(recQ, c)} ORDER BY (${BOOSTED}) DESC, j.published_at DESC LIMIT 5`;
+      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(recQ, c)} ORDER BY ${PIN_FIRST}, ${SORT_SQL.newest} LIMIT 5`;
     const categories = await db.category.findMany({ where: { slug: { in: c.interests } }, orderBy: { sortOrder: 'asc' }, select: { name: true } });
 
     const profile = user.workerProfile;

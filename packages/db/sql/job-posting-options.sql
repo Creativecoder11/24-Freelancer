@@ -48,10 +48,12 @@ FROM (VALUES
 JOIN categories c ON c.slug = v.cat
 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, sort_order = EXCLUDED.sort_order, category_id = EXCLUDED.category_id;
 
--- Settings (admin-editable). Boost prices are placeholders until the client confirms them.
+-- Settings (admin-editable). The per-day boost was replaced by Top / Pin / Combo (migration 0004).
 INSERT INTO platform_settings (key, value, value_type, description, source_ref, is_public) VALUES
  ('job_min_spend_usd',        '0.80',    'number',  'Minimum worker payout per job (slots × reward) before it can be published.', 'CR-2026-11', true),
- ('boost_price_per_day_usd',  '0.50',    'number',  'Price of one day of job boost (pinned as Top job). Charged at publish, not refunded.', 'CR-2026-11', true),
- ('boost_days_options',       '[1,3,7]', 'json',    'Boost period options in days shown in the post-a-job wizard.', 'CR-2026-11', true),
- ('job_schedule_max_days',    '30',      'integer', 'How far ahead (days) an employer can schedule a job to go live.', 'CR-2026-11', true)
+ ('job_schedule_max_days',    '30',      'integer', 'How far ahead (days) an employer can schedule a job to go live.', 'CR-2026-11', true),
+ ('job_top_price_usd',        '5.00',    'number',  'Top: moves a running job to the top of standard listings. A newer Top goes above an older one.', 'CR-2026-11b', true),
+ ('job_pin_price_usd',        '10.00',   'number',  'Pin: keeps a running job above all other jobs for job_pin_hours.', 'CR-2026-11b', true),
+ ('job_combo_price_usd',      '8.00',    'number',  'Combo: Pin and Top together at a discount.', 'CR-2026-11b', true),
+ ('job_pin_hours',            '24',      'integer', 'How long one Pin lasts. Buying again extends it.', 'CR-2026-11b', true)
 ON CONFLICT (key) DO NOTHING;

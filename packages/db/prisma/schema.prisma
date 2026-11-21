@@ -621,6 +621,10 @@ model Job {
   boostDays               Int                      @default(0) @db.SmallInt @map("boost_days")
   boostFeeUsd             Decimal                  @default(0) @db.Decimal(20, 6) @map("boost_fee_usd")
   boostedUntil            DateTime?                @db.Timestamptz(6) @map("boosted_until")
+  /// Last Top purchase: newer Tops rank above older ones (migration 0004).
+  toppedAt                DateTime?                @db.Timestamptz(6) @map("topped_at")
+  /// Pin: ranks above every other job until this time (migration 0004).
+  pinnedUntil             DateTime?                @db.Timestamptz(6) @map("pinned_until")
   createdAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
   updatedAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
   jobProofRequirements    JobProofRequirement[]

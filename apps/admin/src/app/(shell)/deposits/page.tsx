@@ -12,7 +12,7 @@ import { useSession } from '@/lib/session';
 import { d as day, dt, usd } from '@/lib/fmt';
 
 interface Row { ref: string; employer_public_id: string; business_name: string | null; method_label: string; amount_usd: string; credited_amount_usd: string | null; status: string; needs_review: boolean; initiated_at: string; pending_approval: Pending | null }
-interface Detail { ref: string; status: string; needs_review: boolean; employer: { public_id: string; business_name: string | null }; method_label: string; provider: string; provider_payment_id: string | null; amount_usd: string; amount_received_usd: string | null; credited_amount_usd: string | null; refunded_amount_usd: string; provider_fee_exact: string | null; charge_amount_bdt: string | null; fx_rate: string | null; pay_currency: string | null; tx_hash: string | null; confirmations: number | null; failure_reason: string | null; initiated_at: string; completed_at: string | null; credit_ledger_ref: string | null; refund_ledger_ref: string | null; refundable_usd: string; refund_window_ends_at: string | null; refund_window_open: boolean; requery_supported: boolean; webhook_events: { id: string; event_type: string | null; signature_valid: boolean; processing_result: string | null; received_at: string }[]; pending_approval: Pending | null }
+interface Detail { ref: string; status: string; needs_review: boolean; employer: { public_id: string; business_name: string | null }; method_label: string; provider: string; provider_payment_id: string | null; amount_usd: string; amount_received_usd: string | null; credited_amount_usd: string | null; refunded_amount_usd: string; provider_fee_exact: string | null; charge_amount_bdt: string | null; fx_rate: string | null; pay_currency: string | null; tx_hash: string | null; tx_ref_label?: string; confirmations: number | null; failure_reason: string | null; initiated_at: string; completed_at: string | null; credit_ledger_ref: string | null; refund_ledger_ref: string | null; refundable_usd: string; refund_window_ends_at: string | null; refund_window_open: boolean; requery_supported: boolean; webhook_events: { id: string; event_type: string | null; signature_valid: boolean; processing_result: string | null; received_at: string }[]; pending_approval: Pending | null }
 
 const TABS = [
   { value: 'all', label: 'All', q: {} },
@@ -56,11 +56,11 @@ function Deposits() {
   };
   const approveDeposit = (x: Detail): ActionSpec => ({
     title: `Approve deposit ${x.ref}?`,
-    description: `This will credit ${usd(x.amount_usd)} directly to the user's available balance. bKash TrxID: ${x.tx_hash ?? '—'}, Sender: ${x.provider_payment_id ?? '—'}.`,
+    description: `Check that the payment arrived in our account first. This credits ${usd(x.amount_usd)} directly to the user's available balance. ${x.tx_ref_label ?? 'Transaction ID'}: ${x.tx_hash ?? '—'}, sent from: ${x.provider_payment_id ?? '—'}.`,
     confirm: `Approve Deposit · ${usd(x.amount_usd)}`,
     fields: [
       { name: 'amount_usd', type: 'text', label: 'Amount to credit, USD', required: true, default: x.amount_usd, pattern: /^\d+(\.\d{1,2})?$/, patternMsg: 'Enter an amount with up to 2 decimals.' },
-      { name: 'provider_reference', type: 'text', label: 'TrxID / Provider reference', required: false, default: x.tx_hash ?? undefined, max: 120 },
+      { name: 'provider_reference', type: 'text', label: `${x.tx_ref_label ?? 'Transaction ID'} / provider reference`, required: false, default: x.tx_hash ?? undefined, max: 120 },
     ],
     submit: (v) => post(`/admin/deposits/${x.ref}/approve`, { amount_usd: v.amount_usd, provider_reference: v.provider_reference }),
     success: 'Deposit approved and balance credited.',
@@ -194,8 +194,8 @@ function Deposits() {
                   ['Requested', usd(d.amount_usd)],
                   ['Credited', d.credited_amount_usd ? usd(d.credited_amount_usd) : '—'],
                   ...(d.charge_amount_bdt ? [['BDT charge', `৳${d.charge_amount_bdt}${d.fx_rate ? ` at ${d.fx_rate}` : ''}`] as [string, string]] : []),
-                  ['bKash TrxID', d.tx_hash ?? '—'],
-                  ['Sender Number', d.provider_payment_id ?? '—'],
+                  [d.tx_ref_label ?? 'Transaction ID', d.tx_hash ?? '—'],
+                  ['Sent from', d.provider_payment_id ?? '—'],
                   ['Status', d.status],
                   ...(d.failure_reason ? [['Decline reason', d.failure_reason] as [string, string]] : []),
                   ['Credit Ref', d.credit_ledger_ref ? <RefLink key="c" href={`/ledger?ref=${d.credit_ledger_ref}`}>{d.credit_ledger_ref}</RefLink> : '—'],

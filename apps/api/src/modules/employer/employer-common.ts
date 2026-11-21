@@ -50,7 +50,7 @@ export function allowedActions(j: Pick<Job, 'status' | 'pauseReason' | 'countInR
     case 'draft':
       return ['continue', 'duplicate', 'delete'];
     case 'running':
-      return ['review', 'edit', 'add_slots', 'pause', 'duplicate', 'close'];
+      return ['review', 'edit', 'add_slots', 'promote', 'pause', 'duplicate', 'close'];
     case 'paused':
       return j.pauseReason === 'admin' ? ['review', 'duplicate', 'close'] : ['review', 'resume', 'edit', 'add_slots', 'duplicate', 'close'];
     case 'suspended':

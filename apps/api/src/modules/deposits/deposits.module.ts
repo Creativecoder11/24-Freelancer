@@ -6,17 +6,23 @@ import { ZodPipe } from '../../common/zod.pipe';
 import { AuthModule, CurrentUser, JwtAuthGuard } from '../auth/auth.module';
 import { getEnv } from '../../config/env';
 import { requireIdemKey } from '../employer/employer-common';
+import { MANUAL_CHANNELS } from './manual-channels';
 import { EmployerWalletModule } from '../employer-wallet/employer-wallet.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { DepositsService } from './deposits.service';
 import { ReferralCreditService } from '../employer/referral-credit';
 
 const createBody = z.object({
-  method: z.enum(['crypto', 'mobile_wallet', 'card'], { errorMap: () => ({ message: 'Choose a payment method.' }) }),
+  method: z.enum(['crypto', 'mobile_wallet', 'card'], { errorMap: () => ({ message: 'Choose a payment method.' }) }).optional(),
+  /** Manual rail (CR-2026-11b). Sends the employer's sending account and transaction reference. */
+  channel: z.enum(MANUAL_CHANNELS, { errorMap: () => ({ message: 'Choose a payment method.' }) }).optional(),
   sub_provider: z.enum(['bkash', 'nagad']).optional(),
   amount_usd: z.string({ required_error: 'Enter an amount.' }).trim(),
   return_to: z.string().max(300).optional(),
-});
+  // Were missing before, so the manual bKash fields never reached the service.
+  sender_number: z.string().max(80).optional(),
+  trx_id: z.string().max(80).optional(),
+}).refine((b) => b.method || b.channel, { message: 'Choose a payment method.', path: ['method'] });
 const listQuery = z.object({ status: z.string().max(20).optional(), page: queryPage, per_page: queryPerPage(10) });
 const mockBody = z.object({ outcome: z.enum(['paid', 'failed', 'cancelled']) });
 

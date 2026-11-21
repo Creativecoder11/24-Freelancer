@@ -3,7 +3,7 @@ import NextLink from 'next/link';
 import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ActionMenu, Alert, Button, CountUp, EmptyState, Icon, IconButton, Skeleton, StatusBadge, cn, gsap, useGSAP, MOTION_OK, useStaggerIn } from '@24f/ui';
-import { formatDate, formatMoney, formatRelative, formatReward } from '@24f/shared';
+import { formatDate, formatDateTime, formatMoney, formatRelative, formatReward } from '@24f/shared';
 import { ApiError, usePerformance, type Performance } from './api';
 import { useEmployerHeader } from './shell';
 import { ErrorPanel, endsLabel } from './common';
@@ -30,7 +30,8 @@ function Body({ d }: { d: Performance }) {
   const router = useRouter();
   const actions = useJobActions({ onDeleted: () => router.push('/employer/jobs') });
   const j = d.job;
-  const aj: ActionJob = { public_id: j.public_id, title: j.title, status: j.status, reward_usd: j.reward_usd, slots_total: j.slots_total, approved: d.kpis.approved, allowed_actions: j.allowed_actions };
+  const aj: ActionJob = { public_id: j.public_id, title: j.title, status: j.status, reward_usd: j.reward_usd, slots_total: j.slots_total, approved: d.kpis.approved, allowed_actions: j.allowed_actions, pinned_until: j.pinned_until, topped_at: j.topped_at };
+  const pinned = j.status === 'running' && j.pinned_until && new Date(j.pinned_until).getTime() > Date.now() ? j.pinned_until : null;
   const a = j.allowed_actions;
   const root = useStaggerIn<HTMLDivElement>([], { selector: '[data-stagger]' });
   const meta = [
@@ -58,6 +59,7 @@ function Body({ d }: { d: Performance }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <StatusBadge enum="job_status" code={j.status} />
+            {pinned ? <StatusBadge tone="brand" label={`Pinned until ${formatDateTime(pinned)}`} /> : j.status === 'running' && j.topped_at ? <StatusBadge tone="success" label="Top job" /> : null}
             <p className="text-body-sm text-fg-secondary">{meta}</p>
           </div>
           <h2 className="mt-2 font-display text-h4 text-fg tablet:text-h3">{j.title}</h2>
@@ -76,6 +78,11 @@ function Body({ d }: { d: Performance }) {
           {a.includes('edit') ? (
             <Button variant="secondary" href={`/employer/jobs/${j.public_id}/edit?step=1`}>
               Edit job
+            </Button>
+          ) : null}
+          {a.includes('promote') ? (
+            <Button variant="secondary" leadingIcon="trending-up" onClick={() => actions.open('promote', aj)}>
+              Promote
             </Button>
           ) : null}
           {a.includes('add_slots') ? (

@@ -9,6 +9,7 @@ import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, dec, usd2 } from '../employer/employer-common';
 import { ReferralCreditService } from '../employer/referral-credit';
 import { EmployerWalletService, METHOD_LABEL } from '../employer-wallet/employer-wallet.service';
+import { CHANNELS, channelLabel, isManualChannel, type ManualChannel } from './manual-channels';
 import { JobsService } from '../jobs/jobs.service';
 import { MockPaymentProvider, canonicalJson, mockSign, type PaymentProviderAdapter } from './payment-provider';
 
@@ -62,13 +63,16 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
 
   // ----------------------------------------------------------------- create
 
-  async create(userId: string, b: { method: string; sub_provider?: string; amount_usd: string; return_to?: string; sender_number?: string; trx_id?: string }, webOrigin: string) {
+  async create(userId: string, b: { method?: string; channel?: ManualChannel; sub_provider?: string; amount_usd: string; return_to?: string; sender_number?: string; trx_id?: string }, webOrigin: string) {
+    // A manual rail (bKash, Nagad, Rocket, Binance Pay, USDT) implies its method group.
+    const method = b.channel ? CHANNELS[b.channel].group : (b.method ?? '');
     const user = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true, emailVerifiedAt: true, phoneVerifiedAt: true } });
     if (!user.emailVerifiedAt && !user.phoneVerifiedAt) throw new ApiError('VERIFICATION_REQUIRED');
     if (user.status !== 'active') throw new ApiError('ACCOUNT_RESTRICTED', 'Deposits are paused on your account. Contact support.');
     if (await this.settings.get<boolean>('deposits_paused', false)) throw new ApiError('FEATURE_DISABLED', 'Deposits are paused right now. Try again later.');
     const ctx = await this.wallet.addFundsContext(userId);
-    if (!ctx.methods.some((m) => m.method === b.method)) throw new ApiError('METHOD_UNAVAILABLE', undefined, undefined, { method: b.method });
+    if (!ctx.methods.some((m) => m.method === method)) throw new ApiError('METHOD_UNAVAILABLE', undefined, undefined, { method: b.channel ?? method });
+    if (b.channel && !ctx.manual_channels.some((c) => c.channel === b.channel)) throw new ApiError('METHOD_UNAVAILABLE', undefined, undefined, { method: b.channel });
     if (!/^\d+(\.\d{1,2})?$/.test(b.amount_usd)) {
       if (/^\d+\.\d{3,}$/.test(b.amount_usd)) throw new ApiError('AMOUNT_PRECISION', undefined, { amount_usd: ['Use at most 2 decimal places.'] });
       throw new ApiError('VALIDATION_FAILED', undefined, { amount_usd: ['Enter an amount.'] });
@@ -79,35 +83,37 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       throw new ApiError('AMOUNT_ABOVE_MAXIMUM', `The maximum per deposit is $${new Decimal(ctx.max_usd).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.`, undefined, { max_usd: ctx.max_usd });
     if (amount.gt(ctx.remaining_daily_usd))
       throw new ApiError('DAILY_LIMIT_EXCEEDED', "You've reached today's deposit limit of $3,000.00. Try again tomorrow or contact support.", undefined, { remaining_usd: ctx.remaining_daily_usd });
-    if (b.method === 'card') {
+    if (method === 'card') {
       const firstCard = await this.db.deposit.findFirst({ where: { employerUserId: userId, method: 'card', status: 'completed' }, orderBy: { completedAt: 'asc' } });
       const newCustomer = !firstCard || Date.now() - (firstCard.completedAt ?? firstCard.initiatedAt).getTime() < 30 * 86_400_000;
       if (newCustomer && amount.gt(ctx.card_max_usd))
         throw new ApiError('AMOUNT_ABOVE_MAXIMUM', `Card deposits are limited to $${ctx.card_max_usd} for your first 30 days.`, undefined, { max_usd: ctx.card_max_usd });
     }
-    const rate = b.method === 'crypto' ? null : await this.wallet.depositRate();
-    if (b.method !== 'crypto' && !rate) throw new ApiError('FX_RATE_STALE');
+    const rate = method === 'crypto' ? null : await this.wallet.depositRate();
+    if (method !== 'crypto' && !rate) throw new ApiError('FX_RATE_STALE');
     const charge = rate ? amount.mul(rate).toDecimalPlaces(2, Decimal.ROUND_UP) : null;
-    const minutes = await this.settings.number(`deposit_expiry_minutes_${b.method}`, b.method === 'crypto' ? 60 : 30);
+    const minutes = await this.settings.number(`deposit_expiry_minutes_${method}`, method === 'crypto' ? 60 : 30);
     const expiresAt = new Date(Date.now() + minutes * 60_000);
     const returnTo = b.return_to && /^\/[A-Za-z0-9/_\-?=&.%]*$/.test(b.return_to) && !b.return_to.startsWith('//') ? b.return_to : null;
 
-    const trxId = b.trx_id ? String(b.trx_id).trim().toUpperCase() : null;
-    const senderNumber = b.sender_number ? String(b.sender_number).trim() : null;
-
-    if (trxId) {
-      if (!/^[A-Z0-9]{8,12}$/.test(trxId)) {
-        throw new ApiError('VALIDATION_FAILED', undefined, { trx_id: ['Enter a valid bKash TrxID (8 to 12 letters and numbers).'] });
-      }
+    // Manual rail: the employer already sent the money; an admin checks the reference and approves.
+    if (b.channel) {
+      const def = CHANNELS[b.channel];
+      const senderNumber = String(b.sender_number ?? '').trim();
+      const trxId = String(b.trx_id ?? '').trim().toUpperCase();
+      const fields: Record<string, string[]> = {};
+      if (!def.senderPattern.test(senderNumber)) fields.sender_number = [def.senderError];
+      if (!def.refPattern.test(trxId)) fields.trx_id = [def.refError];
+      if (Object.keys(fields).length) throw new ApiError('VALIDATION_FAILED', undefined, fields);
       const dup = await this.db.deposit.findFirst({ where: { txHash: trxId, status: { not: 'failed' } } });
-      if (dup) throw new ApiError('DUPLICATE_PROVIDER_TXN', 'This TrxID was already submitted on another deposit.');
+      if (dup) throw new ApiError('DUPLICATE_PROVIDER_TXN', `This ${def.refLabel} was already submitted on another deposit.`, { trx_id: [`This ${def.refLabel} was already submitted.`] });
 
       const dep = await this.db.deposit.create({
         data: {
           employerUserId: userId,
-          method: 'mobile_wallet',
-          provider: 'bkash_manual',
-          providerAsset: 'bkash',
+          method: def.group,
+          provider: `${b.channel}_manual`,
+          providerAsset: b.channel,
           providerPaymentId: senderNumber,
           txHash: trxId,
           amountUsd: new Prisma.Decimal(amount.toFixed(6)),
@@ -134,11 +140,11 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const adapter = this.adapterFor(b.method);
+    const adapter = this.adapterFor(method);
     const dep = await this.db.deposit.create({
       data: {
         employerUserId: userId,
-        method: b.method as 'crypto' | 'mobile_wallet' | 'card',
+        method: method as 'crypto' | 'mobile_wallet' | 'card',
         provider: adapter.slot,
         providerAsset: b.sub_provider ?? null,
         amountUsd: new Prisma.Decimal(amount.toFixed(6)),
@@ -173,7 +179,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
   // ----------------------------------------------------------------- reads
 
   private methodLabel(d: { method: string; providerAsset: string | null }) {
-    const asset = d.providerAsset ? { bkash: 'bKash', nagad: 'Nagad', usdt: 'USDT' }[d.providerAsset] ?? d.providerAsset : null;
+    const asset = channelLabel(d.providerAsset);
     return `${METHOD_LABEL[d.method] ?? d.method}${asset ? ` · ${asset}` : ''}`;
   }
 
@@ -217,6 +223,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       message_key: key,
       failure_reason: d.status === 'failed' ? (d.failureReason ?? 'Payment declined') : null,
       trx_id: d.txHash ?? null,
+      trx_label: isManualChannel(d.providerAsset) ? CHANNELS[d.providerAsset].refLabel : 'Transaction ID',
       sender_number: d.providerPaymentId ?? null,
       return_to: returnTo,
       balance: { deposit_balance_usd: usd2(bal.total), available_usd: usd2(bal.available) },
@@ -318,7 +325,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
         {
           type: 'deposit',
           idempotencyKey: `deposit:${d.publicRef}:complete`,
-          description: { method: d.method, asset: d.providerAsset ? ({ bkash: 'bKash', nagad: 'Nagad' } as Record<string, string>)[d.providerAsset] ?? d.providerAsset : d.method === 'card' ? 'Card' : d.method === 'crypto' ? 'USDT' : null },
+          description: { method: d.method, asset: d.providerAsset ? channelLabel(d.providerAsset) : d.method === 'card' ? 'Card' : d.method === 'crypto' ? 'USDT' : null },
           refs: { depositId: d.id },
           lines: [
             { accountId: clearing.id, amount: amount.neg().toFixed(6) },

@@ -5,16 +5,13 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, Icon, Skeleton, StatCard, StatusBadge, cn, sanitizeAmount, toast, useStaggerIn } from '@24f/ui';
 import { formatDate, formatMoney } from '@24f/shared';
-import { apiFetch, api, ApiError, errorText, idemKey, useWallet, type WalletSummary } from './api';
+import { apiFetch, api, ApiError, errorText, idemKey, useWallet, type ManualChannel, type ManualChannelId, type WalletSummary } from './api';
 import { useEmployerHeader } from './shell';
 import { ErrorPanel } from './common';
 
-type Method = WalletSummary['add_funds']['methods'][number]['method'];
-const METHOD_TILES: { method: Method; label: string; sub: string }[] = [
-  { method: 'crypto', label: 'Crypto', sub: 'USDT · BTC · others' },
-  { method: 'mobile_wallet', label: 'Mobile wallet', sub: 'bKash · Nagad' },
-  { method: 'card', label: 'Card', sub: 'Visa · Mastercard' },
-];
+/** A manual rail (bKash, Nagad, Rocket, Binance Pay, USDT) or the card gateway if an admin turns it on. */
+type Choice = ManualChannelId | 'card';
+const CHANNEL_SUB: Record<ManualChannelId, string> = { bkash: 'Mobile wallet', nagad: 'Mobile wallet', rocket: 'Mobile wallet', binance_pay: 'Pay in USDT', usdt_trc20: 'TRON network' };
 
 /** SCR-WAL-05 Employer wallet: Add funds (Figma 42:1206). */
 export function EmployerWallet() {
@@ -40,14 +37,21 @@ function Body({ w }: { w: WalletSummary }) {
   const formRef = useRef<HTMLElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const af = w.add_funds;
-  const methods = METHOD_TILES.map((t) => ({ ...t, cfg: af.methods.find((m) => m.method === t.method) }));
+  const cardOn = af.methods.some((m) => m.method === 'card');
+  const tiles: { id: Choice; label: string; sub: string }[] = [
+    ...af.manual_channels.map((c) => ({ id: c.channel as Choice, label: c.label, sub: CHANNEL_SUB[c.channel] })),
+    ...(cardOn ? [{ id: 'card' as Choice, label: 'Card', sub: 'Visa · Mastercard' }] : []),
+  ];
   const prefill = sp.get('add');
   const returnTo = sp.get('return');
-  const methodParam = sp.get('method') as Method | null;
-  const [method, setMethod] = useState<Method>(() => (methodParam && af.methods.some((m) => m.method === methodParam) ? methodParam : (af.default_method as Method)));
-  const cfg = af.methods.find((m) => m.method === method);
-  const [sub, setSub] = useState<string | null>(cfg?.sub_providers[0] ?? null);
-  useEffect(() => setSub(af.methods.find((m) => m.method === method)?.sub_providers[0] ?? null), [method, af.methods]);
+  // ?method= from a retry link: a channel, or a method group (pick its first channel).
+  const param = sp.get('method');
+  const [choice, setChoice] = useState<Choice | null>(() => {
+    const byParam = tiles.find((t) => t.id === param) ?? af.manual_channels.find((c) => c.group === param);
+    const id = byParam ? ('id' in byParam ? byParam.id : byParam.channel) : (af.default_channel ?? tiles[0]?.id ?? null);
+    return id as Choice | null;
+  });
+  const ch: ManualChannel | null = af.manual_channels.find((c) => c.channel === choice) ?? null;
   const initial = prefill && /^\d+(\.\d{1,2})?$/.test(prefill) ? Math.max(Number(prefill), Number(af.min_usd)).toFixed(2) : af.default_amount_usd;
   const [amount, setAmount] = useState(initial);
   const [other, setOther] = useState(af.presets_usd.includes(initial) ? '' : initial);
@@ -55,6 +59,11 @@ function Body({ w }: { w: WalletSummary }) {
   const [trxId, setTrxId] = useState('');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ sender_number?: string; trx_id?: string }>({});
+  useEffect(() => {
+    setFieldErr({});
+    setCopied(false);
+  }, [choice]);
   const root = useStaggerIn<HTMLDivElement>([], { selector: '[data-stagger]' });
 
   useEffect(() => {
@@ -63,15 +72,20 @@ function Body({ w }: { w: WalletSummary }) {
 
   const n = Number(amount);
   const min = Number(af.min_usd);
-  const max = Math.min(Number(af.max_usd), Number(af.remaining_daily_usd), method === 'card' ? Number(af.card_max_usd) : Infinity);
+  const max = Math.min(Number(af.max_usd), Number(af.remaining_daily_usd), choice === 'card' ? Number(af.card_max_usd) : Infinity);
+  // What the employer actually sends: BDT at the deposit rate (rounded up), or USD 1:1 in USDT.
+  const sendLabel = ch ? (ch.currency === 'BDT' ? `৳${Math.ceil(n * Number(ch.deposit_fx_rate ?? 0) || 0).toLocaleString('en-US')}` : `${Number.isFinite(n) ? n.toFixed(2) : '0.00'} USDT`) : null;
   const validate = () => {
     if (!amount || !/^\d+(\.\d{1,2})?$/.test(amount) || !Number.isFinite(n)) return 'Enter an amount in dollars, like 25.00.';
     if (n < min || n > max) return `Enter between ${formatMoney(af.min_usd)} and ${formatMoney(max.toFixed(2))}.`;
-    if (method === 'mobile_wallet') {
-      if (!senderNumber.trim()) return 'Enter your sender bKash number.';
-      if (!trxId.trim() || trxId.trim().length < 8) return 'Enter a valid bKash TrxID (8 to 12 letters and numbers).';
-    }
     return null;
+  };
+  const validateManual = () => {
+    if (!ch) return {};
+    const e: { sender_number?: string; trx_id?: string } = {};
+    if (!senderNumber.trim()) e.sender_number = `Enter ${ch.sender_label.replace(/^Your /, 'your ').replace(/ \(sender\)$/, '')}.`;
+    if (!trxId.trim()) e.trx_id = `Enter the ${ch.ref_label}.`;
+    return e;
   };
 
   const deposits = useQuery({
@@ -83,25 +97,30 @@ function Body({ w }: { w: WalletSummary }) {
     mutationFn: () =>
       api.post<{ ref: string; checkout_url: string }>(
         '/deposits',
-        {
-          method,
-          sub_provider: method === 'mobile_wallet' ? (sub ?? undefined) : undefined,
-          amount_usd: n.toFixed(2),
-          return_to: returnTo ?? undefined,
-          sender_number: method === 'mobile_wallet' ? senderNumber.trim() : undefined,
-          trx_id: method === 'mobile_wallet' ? trxId.trim().toUpperCase() : undefined,
-        },
+        ch
+          ? { channel: ch.channel, amount_usd: n.toFixed(2), return_to: returnTo ?? undefined, sender_number: senderNumber.trim(), trx_id: trxId.trim().toUpperCase() }
+          : { method: 'card', amount_usd: n.toFixed(2), return_to: returnTo ?? undefined },
         { headers: { 'Idempotency-Key': idemKey() } },
       ),
     onSuccess: (r) => {
       window.location.assign(r.checkout_url);
     },
     onError: (e) => {
+      // Manual rails: the server checks the sender account and reference format and reuse.
+      if (e instanceof ApiError && (e.fields.sender_number || e.fields.trx_id)) {
+        setFieldErr({ sender_number: e.fields.sender_number?.[0], trx_id: e.fields.trx_id?.[0] });
+        return;
+      }
       if (e instanceof ApiError && ['AMOUNT_BELOW_MINIMUM', 'AMOUNT_ABOVE_MAXIMUM', 'DAILY_LIMIT_EXCEEDED', 'AMOUNT_PRECISION', 'VALIDATION_FAILED'].includes(e.code)) {
         setError(errorText(e));
         return;
       }
-      toast.show({ tone: 'danger', title: 'We couldn’t reach the payment provider', body: e instanceof ApiError && e.code !== 'PROVIDER_UNAVAILABLE' ? e.message : 'You weren’t charged. Try again or pick another method.' });
+      if (e instanceof ApiError && e.code === 'DUPLICATE_PROVIDER_TXN') {
+        setFieldErr({ trx_id: e.message });
+        return;
+      }
+      if (ch) toast.show({ tone: 'danger', title: 'We couldn’t submit your deposit', body: e instanceof ApiError ? e.message : 'Check your connection and try again.' });
+      else toast.show({ tone: 'danger', title: 'We couldn’t reach the payment provider', body: e instanceof ApiError && e.code !== 'PROVIDER_UNAVAILABLE' ? e.message : 'You weren’t charged. Try again or pick another method.' });
     },
   });
 
@@ -110,11 +129,14 @@ function Body({ w }: { w: WalletSummary }) {
     const err = validate();
     setError(err);
     if (err) return amountRef.current?.focus();
+    const fe = validateManual();
+    setFieldErr(fe);
+    if (fe.sender_number || fe.trx_id) return;
     start.mutate();
   };
 
   const after = Number(w.deposit_balance_usd) + (Number.isFinite(n) ? n : 0);
-  const paused = af.deposits_paused || w.account_status !== 'active';
+  const paused = af.deposits_paused || w.account_status !== 'active' || !choice;
 
   return (
     <div ref={root} className="space-y-6">
@@ -175,51 +197,35 @@ function Body({ w }: { w: WalletSummary }) {
           <form onSubmit={submit} noValidate className="mt-6 space-y-6">
             <fieldset>
               <legend className="mb-2 text-label-md text-fg">Payment method</legend>
-              <div className="grid gap-3 tablet:grid-cols-3">
-                {methods.map((m) => {
-                  const on = method === m.method;
-                  const off = !m.cfg;
-                  return (
-                    <label
-                      key={m.method}
-                      className={cn(
-                        'relative flex min-h-[72px] flex-col justify-center rounded-[12px] border p-4 transition-colors has-[:focus-visible]:shadow-focus',
-                        off ? 'cursor-not-allowed border-line bg-muted' : on ? 'cursor-pointer border-[1.5px] border-line-brand bg-brand-subtle' : 'cursor-pointer border-line bg-surface hover:border-line-strong',
-                      )}
-                    >
-                      <input type="radio" name="method" className="sr-only" checked={on} disabled={off} onChange={() => setMethod(m.method)} aria-describedby={off ? `m-${m.method}-off` : undefined} />
-                      <span className={cn('text-label-md', off ? 'text-fg-disabled' : 'text-fg')}>{m.label}</span>
-                      <span className="mt-0.5 text-body-xs text-fg-tertiary">{m.cfg?.sublabel ?? m.sub}</span>
-                      {off ? (
-                        <span id={`m-${m.method}-off`} className="mt-1 text-body-xs text-fg-tertiary">
-                          Not available right now.
-                        </span>
-                      ) : null}
-                      {on ? (
-                        <span aria-hidden className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-brand text-fg-on-brand">
-                          <Icon name="check" size={12} strokeWidth={3} />
-                        </span>
-                      ) : null}
-                    </label>
-                  );
-                })}
-              </div>
-              {cfg && cfg.sub_providers.length > 1 ? (
-                <div role="radiogroup" aria-label="Wallet" className="mt-3 flex flex-wrap gap-2">
-                  {cfg.sub_providers.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      role="radio"
-                      aria-checked={sub === p}
-                      onClick={() => setSub(p)}
-                      className={cn('h-9 rounded-full px-4 text-label-md transition-colors focus-visible:shadow-focus focus-visible:outline-none', sub === p ? 'bg-inverse text-fg-inverse' : 'border border-line bg-surface text-fg hover:border-line-strong')}
-                    >
-                      {p === 'bkash' ? 'bKash' : p === 'nagad' ? 'Nagad' : p}
-                    </button>
-                  ))}
+              {tiles.length ? (
+                <div className="grid grid-cols-2 gap-3 tablet:grid-cols-3">
+                  {tiles.map((t) => {
+                    const on = choice === t.id;
+                    return (
+                      <label
+                        key={t.id}
+                        className={cn(
+                          'relative flex min-h-[72px] cursor-pointer flex-col justify-center rounded-[12px] border p-4 transition-colors has-[:focus-visible]:shadow-focus',
+                          on ? 'border-[1.5px] border-line-brand bg-brand-subtle' : 'border-line bg-surface hover:border-line-strong',
+                        )}
+                      >
+                        <input type="radio" name="method" className="sr-only" checked={on} onChange={() => setChoice(t.id)} />
+                        <span className="text-label-md text-fg">{t.label}</span>
+                        <span className="mt-0.5 text-body-xs text-fg-tertiary">{t.sub}</span>
+                        {on ? (
+                          <span aria-hidden className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-brand text-fg-on-brand">
+                            <Icon name="check" size={12} strokeWidth={3} />
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
                 </div>
-              ) : null}
+              ) : (
+                <p role="status" className="rounded-[12px] bg-warning-subtle px-4 py-3 text-body-sm text-fg-warning">
+                  No payment method is available right now. Contact support to add funds.
+                </p>
+              )}
             </fieldset>
 
             <fieldset aria-describedby={error ? 'amount-err' : undefined}>
@@ -280,55 +286,68 @@ function Body({ w }: { w: WalletSummary }) {
               )}
             </fieldset>
 
-            {method === 'mobile_wallet' ? (
+            {ch ? (
               <div className="space-y-4 rounded-[14px] border border-line-brand/40 bg-brand-subtle/30 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-label-md font-semibold text-fg">
-                    bKash Number ({af.manual_bkash?.account_type ?? 'Personal · Send Money'})
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-label-md text-fg">
+                    Send to our {ch.account_label}
+                    {ch.account_type ? <span className="font-normal text-fg-secondary"> · {ch.account_type}</span> : null}
                   </span>
                   <button
                     type="button"
                     onClick={() => {
-                      void navigator.clipboard.writeText(af.manual_bkash?.number ?? '01700000000');
+                      void navigator.clipboard.writeText(ch.account);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}
-                    className="flex items-center gap-1.5 rounded-[8px] bg-brand px-3 py-1.5 text-label-sm font-medium text-fg-inverse hover:opacity-90 transition-opacity"
+                    className="flex items-center gap-1.5 rounded-[8px] bg-brand px-3 py-1.5 text-label-sm text-fg-on-brand transition-opacity hover:opacity-90 focus-visible:shadow-focus focus-visible:outline-none"
                   >
                     <Icon name="copy" size={14} />
-                    {copied ? 'Copied!' : 'Copy Number'}
+                    {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <div className="flex items-baseline justify-between rounded-[10px] bg-surface p-3 font-mono text-h4 font-bold tracking-wider text-fg border border-line">
-                  <span>{af.manual_bkash?.number ?? '01700000000'}</span>
-                  <span className="text-body-xs font-normal text-fg-secondary">
-                    Total: ৳{Math.ceil(n * Number(cfg?.deposit_fx_rate ?? af.manual_bkash?.deposit_fx_rate ?? '121.50') || 0).toLocaleString('en-US')}
+                <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-[10px] border border-line bg-surface p-3">
+                  <span className={cn('min-w-0 break-all font-mono font-bold text-fg', ch.account.length > 20 ? 'text-body-md' : 'text-h4 tracking-wider')}>{ch.account}</span>
+                  <span className="text-body-sm text-fg-secondary">
+                    Send exactly <span className="font-semibold tabular-nums text-fg">{sendLabel}</span>
                   </span>
                 </div>
-                <p className="text-body-xs text-fg-secondary">
-                  {af.manual_bkash?.instructions ?? 'Send money to our bKash personal number, then enter your sender number and TrxID below.'}
-                </p>
+                <p className="text-body-xs text-fg-secondary">{ch.instructions}</p>
 
                 <div className="grid gap-3 tablet:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1 block text-label-sm text-fg">Your bKash Number (Sender)</span>
+                  <label className="block min-w-0">
+                    <span className="mb-1 block text-label-sm text-fg">{ch.sender_label}</span>
                     <input
                       type="text"
-                      placeholder="01XXXXXXXXX"
+                      autoComplete="off"
+                      placeholder={ch.sender_placeholder}
                       value={senderNumber}
-                      onChange={(e) => setSenderNumber(e.target.value)}
-                      className="h-11 w-full rounded-[10px] border border-line bg-surface px-3 text-body-sm outline-none focus:border-line-brand focus:shadow-focus"
+                      aria-invalid={fieldErr.sender_number ? true : undefined}
+                      aria-describedby={fieldErr.sender_number ? 'sender-err' : undefined}
+                      onChange={(e) => {
+                        setSenderNumber(e.target.value);
+                        setFieldErr((f) => ({ ...f, sender_number: undefined }));
+                      }}
+                      className={cn('h-11 w-full rounded-[10px] border bg-surface px-3 font-mono text-body-sm outline-none focus:border-line-brand focus:shadow-focus', fieldErr.sender_number ? 'border-line-danger' : 'border-line')}
                     />
+                    {fieldErr.sender_number ? <span id="sender-err" className="mt-1 block text-body-xs text-fg-danger">{fieldErr.sender_number}</span> : null}
                   </label>
-                  <label className="block">
-                    <span className="mb-1 block text-label-sm text-fg">bKash TrxID</span>
+                  <label className="block min-w-0">
+                    <span className="mb-1 block text-label-sm text-fg">{ch.ref_label}</span>
                     <input
                       type="text"
-                      placeholder="e.g. BL48X9K2"
+                      autoComplete="off"
+                      placeholder={ch.ref_placeholder}
                       value={trxId}
-                      onChange={(e) => setTrxId(e.target.value.toUpperCase())}
-                      className="h-11 w-full rounded-[10px] border border-line bg-surface px-3 font-mono text-body-sm uppercase outline-none focus:border-line-brand focus:shadow-focus"
+                      aria-invalid={fieldErr.trx_id ? true : undefined}
+                      aria-describedby={fieldErr.trx_id ? 'trx-err' : undefined}
+                      onChange={(e) => {
+                        setTrxId(e.target.value.toUpperCase());
+                        setFieldErr((f) => ({ ...f, trx_id: undefined }));
+                      }}
+                      className={cn('h-11 w-full rounded-[10px] border bg-surface px-3 font-mono text-body-sm uppercase outline-none focus:border-line-brand focus:shadow-focus', fieldErr.trx_id ? 'border-line-danger' : 'border-line')}
                     />
+                    {fieldErr.trx_id ? <span id="trx-err" className="mt-1 block text-body-xs text-fg-danger">{fieldErr.trx_id}</span> : null}
                   </label>
                 </div>
               </div>
@@ -339,16 +358,17 @@ function Body({ w }: { w: WalletSummary }) {
                 <dt className="text-fg-secondary">Deposit</dt>
                 <dd className="font-semibold tabular-nums text-fg">{Number.isFinite(n) ? formatMoney(n.toFixed(2)) : '—'}</dd>
               </div>
-              <div className="flex justify-between gap-3 py-1.5">
-                <dt className="text-fg-secondary">Processing fee</dt>
-                <dd className="text-right font-semibold text-fg">Shown by payment provider</dd>
-              </div>
-              {cfg?.deposit_fx_rate && method !== 'crypto' ? (
+              {ch ? (
                 <div className="flex justify-between gap-3 py-1.5">
-                  <dt className="text-fg-secondary">You pay</dt>
-                  <dd className="font-semibold tabular-nums text-fg">≈ ৳{Math.ceil(n * Number(cfg.deposit_fx_rate) || 0).toLocaleString('en-US')}</dd>
+                  <dt className="text-fg-secondary">You send{ch.currency === 'BDT' ? ` (1 USD = ৳${Number(ch.deposit_fx_rate).toFixed(0)})` : ''}</dt>
+                  <dd className="font-semibold tabular-nums text-fg">{sendLabel}</dd>
                 </div>
-              ) : null}
+              ) : (
+                <div className="flex justify-between gap-3 py-1.5">
+                  <dt className="text-fg-secondary">Processing fee</dt>
+                  <dd className="text-right font-semibold text-fg">Shown by payment provider</dd>
+                </div>
+              )}
               <div className="mt-1.5 flex justify-between gap-3 border-t border-line pt-3">
                 <dt className="text-label-md text-fg">Added to your balance</dt>
                 <dd className="text-label-md tabular-nums text-fg-brand">{Number.isFinite(n) ? formatMoney(n.toFixed(2)) : '—'}</dd>
@@ -361,11 +381,11 @@ function Body({ w }: { w: WalletSummary }) {
               <NextLink href="/legal/refund" className="font-semibold text-fg-brand underline-offset-2 hover:underline">
                 Refund policy
               </NextLink>{' '}
-              for exceptions. You’re redirected to the provider to pay securely.
+              for exceptions. {ch ? 'We check your payment and add it to your balance, usually within a few hours.' : 'You’re redirected to the provider to pay securely.'}
             </p>
 
-            <Button type="submit" size="L" fullWidth loading={start.isPending} loadingText={method === 'mobile_wallet' ? 'Submitting…' : 'Redirecting…'} disabled={paused} disabledReasonId="dep-paused">
-              {method === 'mobile_wallet' ? `Submit bKash Deposit · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}` : `Continue to payment · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}`}
+            <Button type="submit" size="L" fullWidth loading={start.isPending} loadingText={ch ? 'Submitting…' : 'Redirecting…'} disabled={paused} disabledReasonId="dep-paused">
+              {ch ? `I’ve sent it · Submit ${ch.label} deposit · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}` : `Continue to payment · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}`}
             </Button>
             <span id="dep-paused" className="sr-only">
               Deposits are paused.

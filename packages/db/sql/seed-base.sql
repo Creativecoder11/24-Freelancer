@@ -56,13 +56,13 @@ INSERT INTO payout_method_configs
   ('bkash',  'bKash',  'Mobile wallet',  'bKash personal number',  '^01[3-9][0-9]{8}$',   'BDT',   5.00, 500.00, 500.00, 0.00, 0, '[5.00,10.00]',  'Usually arrives within 24 hours', 'manual', 'treasury:bkash_merchant',  true, 1),
   ('nagad',  'Nagad',  'Mobile wallet',  'Nagad personal number',  '^01[3-9][0-9]{8}$',   'BDT',   5.00, 500.00, 500.00, 0.00, 0, '[5.00,10.00]',  'Usually arrives within 24 hours', 'manual', 'treasury:nagad_merchant',  true, 2),
   ('rocket', 'Rocket', 'Mobile wallet',  'Rocket account number', '^01[3-9][0-9]{8,9}$', 'BDT',   5.00, 500.00, 500.00, 0.00, 0, '[5.00,10.00]',  'Usually arrives within 24 hours', 'manual', 'treasury:rocket_merchant', true, 3),
-  ('usdt_trc20', 'USDT', 'TRC20 · crypto', 'USDT TRC20 address',   '^T[1-9A-HJ-NP-Za-km-z]{33}$', 'USDT', 10.00, 500.00, 500.00, 1.00, 0, '[10.00,20.00]', 'Usually arrives within 24 hours', 'manual', 'treasury:usdt_hot_wallet', false, 4)  -- off by default [D-35]
+  ('usdt_trc20', 'USDT', 'TRC20 · crypto', 'USDT TRC20 address',   '^T[1-9A-HJ-NP-Za-km-z]{33}$', 'USDT', 5.00, 500.00, 500.00, 1.00, 0, '[5.00,10.00]', 'Usually arrives within 24 hours', 'manual', 'treasury:usdt_hot_wallet', true, 4)  -- $5 minimum on every method (CR-2026-11b)
 ON CONFLICT (method_type) DO NOTHING;
 
--- 5. Exchange rates (D-04; placeholder 121.50 from Figma 41:753) --------
+-- 5. Exchange rates (D-04; 1 USD = 110 BDT both ways, CR-2026-11b) --------
 INSERT INTO exchange_rates (quote_currency, direction, rate, source, effective_from, note) VALUES
-  ('BDT',  'payout',  121.500000, 'manual', '2026-01-01T00:00:00Z', 'Launch placeholder from Figma; finance replaces it daily (D-04).'),
-  ('BDT',  'deposit', 121.500000, 'manual', '2026-01-01T00:00:00Z', 'Deposit rate for BDT rails (Doc 08 §5). Same placeholder.'),
+  ('BDT',  'payout',  110.000000, 'manual', '2026-01-01T00:00:00Z', '1 USD = 110 BDT (client, Nov 2026). Finance can enter a new rate in admin.'),
+  ('BDT',  'deposit', 110.000000, 'manual', '2026-01-01T00:00:00Z', '1 USD = 110 BDT for deposits (client, Nov 2026).'),
   ('USDT', 'payout', 1.000000, 'manual', '2026-01-01T00:00:00Z', '1 USD = 1 USDT unless finance changes it (Canonical §5).')
 ON CONFLICT (quote_currency, direction, effective_from) DO NOTHING;
 
@@ -89,8 +89,19 @@ INSERT INTO platform_settings (key, value, value_type, description, source_ref, 
  ('bkash_manual_number',             '"01700000000"', 'string', 'Official bKash number for manual deposits.', 'Client', true),
  ('bkash_manual_account_type',       '"Personal (Send Money)"', 'string', 'bKash account type (Personal / Merchant / Agent).', 'Client', true),
  ('bkash_manual_instructions',       '"Send money to our bKash personal number with your User ID as reference, then enter your sender bKash number and TrxID below."', 'string', 'Instructions shown to users when depositing via bKash.', 'Client', true),
+-- Manual deposits on other rails (CR-2026-11b). Empty account = method hidden on Add funds.
+ ('nagad_manual_enabled',          'true',   'boolean', 'Enable manual Nagad deposits.', 'CR-2026-11b', true),
+ ('nagad_manual_number',           '""',     'string',  'Official Nagad number for manual deposits. Empty hides Nagad.', 'CR-2026-11b', true),
+ ('nagad_manual_account_type',     '"Personal (Send Money)"', 'string', 'Nagad account type (Personal / Merchant / Agent).', 'CR-2026-11b', true),
+ ('rocket_manual_enabled',         'true',   'boolean', 'Enable manual Rocket deposits.', 'CR-2026-11b', true),
+ ('rocket_manual_number',          '""',     'string',  'Official Rocket number for manual deposits. Empty hides Rocket.', 'CR-2026-11b', true),
+ ('rocket_manual_account_type',    '"Personal (Send Money)"', 'string', 'Rocket account type (Personal / Merchant / Agent).', 'CR-2026-11b', true),
+ ('binance_pay_manual_enabled',    'true',   'boolean', 'Enable manual Binance Pay deposits.', 'CR-2026-11b', true),
+ ('binance_pay_manual_id',         '""',     'string',  'Binance Pay ID that receives deposits. Empty hides Binance Pay.', 'CR-2026-11b', true),
+ ('usdt_trc20_manual_enabled',     'true',   'boolean', 'Enable manual USDT (TRC20) deposits.', 'CR-2026-11b', true),
+ ('usdt_trc20_manual_address',     '""',     'string',  'TRC20 wallet address that receives USDT deposits. Empty hides USDT.', 'CR-2026-11b', true),
  ('deposit_refund_window_days',    '30',     'integer', 'Admin refund window for unused deposits.', 'D-15', false),
- ('deposit_methods_enabled',       '["mobile_wallet","card"]', 'json', 'Deposit tiles shown on Add funds. Crypto is off until written legal advice.', 'D-06, D-35', true),
+ ('deposit_methods_enabled',       '["mobile_wallet","crypto"]', 'json', 'Deposit groups shown on Add funds: mobile_wallet (bKash, Nagad, Rocket), crypto (Binance Pay, USDT TRC20). Card is off (CR-2026-11b). Crypto was off until written legal advice.', 'D-06, D-35', true),
  -- Slots, review, resubmission, disputes
  ('slot_hold_minutes',             '60',     'integer', 'Reservation hold after Start job.', 'A-17, D-08', true),
  ('review_window_default',   '72',     'integer', 'Default review window.', 'D-07', true),

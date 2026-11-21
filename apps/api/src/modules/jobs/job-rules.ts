@@ -15,8 +15,6 @@ export interface JobLimits {
   shorteners: string[];
   /** Minimum worker payout per job (slots × reward). */
   minSpendUsd: string;
-  boostDaysOptions: number[];
-  boostPricePerDayUsd: string;
   scheduleMaxDays: number;
 }
 
@@ -144,7 +142,6 @@ export function validateStep(step: number, j: JobFull, lim: JobLimits): Errors {
     if (!lim.reviewWindows.includes(j.reviewWindowHours)) add(e, 'review_window_hours', 'Choose 24, 48 or 72 hours.');
     if (j.submissionsPerWorker !== 1) add(e, 'submissions_per_worker', 'Each worker can submit once.');
     if (j.status === 'draft') {
-      if (j.boostDays !== 0 && !lim.boostDaysOptions.includes(j.boostDays)) add(e, 'boost_days', 'Choose a boost period.');
       if (j.startsAt) {
         const ms = j.startsAt.getTime() - Date.now();
         if (ms < 5 * 60_000) add(e, 'starts_at', 'Pick a start time at least 5 minutes from now, or leave it empty to start at once.');

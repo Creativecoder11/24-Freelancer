@@ -55,7 +55,7 @@ export class FxService {
     return r;
   }
 
-  /** "1 USD = ৳121.50" or "1 USD = 1 USDT". */
+  /** "1 USD = ৳110.00" or "1 USD = 1 USDT". */
   static label(currency: string, rate: Decimal.Value): string {
     if (currency === 'USDT') return `1 USD = ${new Decimal(rate).toDecimalPlaces(2).toString()} USDT`;
     return formatRate(new Decimal(rate).toFixed(2));

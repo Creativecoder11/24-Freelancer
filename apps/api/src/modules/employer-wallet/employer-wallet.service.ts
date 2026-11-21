@@ -6,9 +6,10 @@ import { Paged } from '../../common/envelope.interceptor';
 import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, dec, dhakaDate, dhakaMonthStart, shortTitle, usd2 } from '../employer/employer-common';
 import { EmployerService } from '../employer/employer.service';
+import { CHANNELS, MANUAL_CHANNELS } from '../deposits/manual-channels';
 
 export const METHOD_LABEL: Record<string, string> = { crypto: 'Crypto', mobile_wallet: 'Mobile wallet', card: 'Card' };
-const METHOD_SUB: Record<string, string> = { crypto: 'USDT · BTC · others', mobile_wallet: 'bKash · Nagad', card: 'Visa · Mastercard' };
+const METHOD_SUB: Record<string, string> = { crypto: 'Binance Pay · USDT (TRC20)', mobile_wallet: 'bKash · Nagad · Rocket', card: 'Visa · Mastercard' };
 const TYPE_LABEL: Record<string, string> = {
   deposit: 'Deposit',
   job_reserve: 'Reserve',
@@ -85,7 +86,7 @@ export class EmployerWalletService {
   }
 
   async addFundsContext(userId: string) {
-    const enabled = await this.settings.get<string[]>('deposit_methods_enabled', ['mobile_wallet', 'card']);
+    const enabled = await this.settings.get<string[]>('deposit_methods_enabled', ['mobile_wallet', 'crypto']);
     const rate = await this.depositRate();
     const presets = (await this.settings.get<(number | string)[]>('deposit_presets_usd', [10, 25, 50, 100])).map((p) => new Decimal(p).toFixed(2));
     const min = new Decimal(String(await this.settings.get('deposit_min_usd', '10.00')));
@@ -96,24 +97,25 @@ export class EmployerWalletService {
       where: { employerUserId: userId, initiatedAt: { gte: since }, status: { in: ['initiated', 'pending', 'completed'] } },
       _sum: { amountUsd: true },
     });
-    const last = await this.db.deposit.findFirst({ where: { employerUserId: userId, status: 'completed' }, orderBy: { completedAt: 'desc' }, select: { method: true } });
-    const order = ['crypto', 'mobile_wallet', 'card'].filter((m) => enabled.includes(m));
-    const defaultMethod = last && enabled.includes(last.method) ? last.method : enabled.includes('mobile_wallet') ? 'mobile_wallet' : (order[0] ?? null);
-
-    const bkashManualNumber = await this.settings.get<string>('bkash_manual_number', '01700000000');
-    const bkashAccountType = await this.settings.get<string>('bkash_manual_account_type', 'Personal (Send Money)');
-    const bkashInstructions = await this.settings.get<string>('bkash_manual_instructions', 'Send money to our bKash personal number with your User ID as reference, then enter your sender bKash number and TrxID below.');
-    const bkashManualEnabled = await this.settings.get<boolean>('bkash_manual_enabled', true);
+    const last = await this.db.deposit.findFirst({ where: { employerUserId: userId, status: 'completed' }, orderBy: { completedAt: 'desc' }, select: { method: true, providerAsset: true } });
+    const manual = await this.manualChannels(enabled, rate);
+    // Mobile wallet and crypto are manual rails now; card (if an admin turns it back on) uses the gateway.
+    const order = ['mobile_wallet', 'crypto', 'card'].filter((m) => enabled.includes(m) && (m === 'card' || manual.some((c) => c.group === m)));
+    const defaultMethod = last && order.includes(last.method) ? last.method : (order[0] ?? null);
+    const lastChannel = manual.find((c) => c.channel === last?.providerAsset)?.channel ?? manual[0]?.channel ?? null;
 
     return {
       methods: order.map((m) => ({
         method: m,
         label: METHOD_LABEL[m],
         sublabel: METHOD_SUB[m],
-        sub_providers: m === 'mobile_wallet' ? ['bkash', 'nagad'] : [],
+        sub_providers: manual.filter((c) => c.group === m).map((c) => c.channel),
         charge_currency: m === 'crypto' ? 'USD' : 'BDT',
         deposit_fx_rate: m === 'crypto' || !rate ? null : rate.toFixed(2),
       })),
+      /** Manual rails the employer can pay with right now, in display order. */
+      manual_channels: manual,
+      default_channel: lastChannel,
       default_method: defaultMethod,
       presets_usd: presets,
       default_amount_usd: presets.includes('25.00') ? '25.00' : (presets[0] ?? '25.00'),
@@ -122,14 +124,36 @@ export class EmployerWalletService {
       remaining_daily_usd: Decimal.max(0, daily.minus(dec(used._sum.amountUsd))).toFixed(2),
       card_max_usd: new Decimal(String(await this.settings.get('card_new_customer_max_usd', '200.00'))).toFixed(2),
       deposits_paused: await this.settings.get<boolean>('deposits_paused', false),
-      manual_bkash: {
-        enabled: bkashManualEnabled,
-        number: bkashManualNumber,
-        account_type: bkashAccountType,
-        instructions: bkashInstructions,
-        deposit_fx_rate: rate ? rate.toFixed(2) : '121.50',
-      },
     };
+  }
+
+  /** Manual rails that are on, have a receiving account, and (for BDT rails) a deposit rate. */
+  async manualChannels(enabledGroups: string[], rate: Decimal | null) {
+    const out = [];
+    for (const channel of MANUAL_CHANNELS) {
+      const d = CHANNELS[channel];
+      if (!enabledGroups.includes(d.group)) continue;
+      if (!(await this.settings.get<boolean>(d.enabledKey, true))) continue;
+      const account = String(await this.settings.get<string>(d.accountKey, d.accountDefault) ?? '').trim();
+      if (!account || (d.currency === 'BDT' && !rate)) continue;
+      const instructions = channel === 'bkash' ? String(await this.settings.get<string>('bkash_manual_instructions', d.instructions)) : d.instructions;
+      out.push({
+        channel,
+        label: d.label,
+        group: d.group,
+        currency: d.currency,
+        deposit_fx_rate: d.currency === 'BDT' && rate ? rate.toFixed(2) : null,
+        account,
+        account_label: d.accountLabel,
+        account_type: d.accountTypeKey ? String(await this.settings.get<string>(d.accountTypeKey, 'Personal (Send Money)')) : null,
+        instructions,
+        sender_label: d.senderLabel,
+        sender_placeholder: d.senderPlaceholder,
+        ref_label: d.refLabel,
+        ref_placeholder: d.refPlaceholder,
+      });
+    }
+    return out;
   }
 
   async summary(userId: string) {
@@ -173,6 +197,7 @@ export class EmployerWalletService {
         return `${title} · ${count} approval${count === 1 ? '' : 's'}`;
       case 'platform_fee':
         if (p.kind === 'boost') return `${title} · Boost · ${Number(p.days ?? 0)} day${Number(p.days) === 1 ? '' : 's'}`;
+        if (p.kind === 'promotion') return `${title} · ${({ top: 'Top', pin: 'Pin', combo: 'Pin + Top' } as Record<string, string>)[String(p.promotion)] ?? 'Promotion'}`;
         return `${title} · ${count} approval${count === 1 ? '' : 's'} · ${p.percent ?? ''}%`;
       case 'job_release':
         return `${title} · ${String(p.reason ?? 'budget released')}`;
@@ -210,7 +235,7 @@ export class EmployerWalletService {
       running = running.plus(total);
       const isMove = r.type === 'job_reserve' || r.type === 'job_release';
       const amount = isMove ? na : total;
-      const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost')) && r.job_id;
+      const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost' && r.description_params?.kind !== 'promotion')) && r.job_id;
       const key = groupable ? `${r.type}:${r.job_id}:${dhakaDate(r.occurred_at)}` : r.public_ref;
       let g = groupable ? open.get(key) : undefined;
       if (!g) {

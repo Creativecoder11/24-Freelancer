@@ -215,8 +215,10 @@ export interface JobCard {
   slots_left: number;
   published_at: string | null;
   ends_at: string | null;
-  /** Paid boost running: pinned above other jobs and shown as "Top job". */
-  is_boosted?: boolean;
+  /** Pin running: listed above every other job, shown as "Pinned". */
+  is_pinned?: boolean;
+  /** Employer bought Top: ranked by the newest Top, shown as "Top job". */
+  is_topped?: boolean;
 }
 
 export interface JobDetailPublic {

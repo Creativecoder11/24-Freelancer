@@ -77,8 +77,8 @@ export function DepositStatus({ refId }: { refId: string }) {
         {d.credited_amount_usd ? <Row k="Added to balance" v={formatMoney(d.credited_amount_usd)} /> : null}
         <Row k="Method" v={d.method_label} />
         {d.charge_amount_bdt ? <Row k="BDT Amount" v={`৳${d.charge_amount_bdt}`} /> : null}
-        {d.trx_id ? <Row k="bKash TrxID" v={<span className="font-mono font-bold text-fg-brand">{d.trx_id}</span>} /> : null}
-        {d.sender_number ? <Row k="Sender Number" v={d.sender_number} /> : null}
+        {d.trx_id ? <Row k={d.trx_label ?? 'Transaction ID'} v={<span className="break-all font-mono font-bold text-fg-brand">{d.trx_id}</span>} /> : null}
+        {d.sender_number ? <Row k="Sent from" v={<span className="break-all">{d.sender_number}</span>} /> : null}
         <Row k="Status" v={<StatusBadge enum="deposit_status" code={d.status} />} />
         {d.failure_reason ? <Row k="Decline reason" v={<span className="font-medium text-fg-danger">{d.failure_reason}</span>} /> : null}
         <Row k="Started" v={formatDateTime(d.created_at)} />
