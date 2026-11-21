@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { COOKIE_NAMES } from '@24f/shared';
+import type { AuthSession } from '@24f/db';
 import { getEnv } from '../../config/env';
 import { PrismaService } from '../../common/prisma.service';
 import { RedisService } from '../../common/redis.service';
@@ -25,6 +26,8 @@ export interface AccessClaims {
 
 const REFRESH_PATH = '/api/v1/auth';
 const REVOKED_SID_TTL = 15 * 60;
+/** A rotated refresh token presented again within this window gets a fresh token (parallel tabs, lost responses). */
+const ROTATION_GRACE_MS = 60_000;
 
 /** Parses "Chrome on Windows" style labels from a user agent. */
 export function deviceLabel(ua: string | null): string {
@@ -215,17 +218,42 @@ export class SessionService {
     if (!row) throw new ApiError('SESSION_EXPIRED');
 
     if (row.revokedAt) {
-      if (row.revokedReason === 'rotated' && Date.now() - row.revokedAt.getTime() <= 10_000) {
-        throw new ApiError('REFRESH_RACE'); // parallel tabs: retry picks up the new cookie
-      }
       if (row.revokedReason === 'rotated') {
+        const current = await this.lostRotation(row);
+        if (current) return this.rotateRow(current);
         await this.revokeFamily(row.familyId, 'reuse_detected');
         // Security notification (FR-AUTH-010) is sent by the notifications module when it lands.
       }
       throw new ApiError('SESSION_EXPIRED');
     }
     if (row.expiresAt.getTime() < Date.now()) throw new ApiError('SESSION_EXPIRED');
+    return this.rotateRow(row);
+  }
 
+  /**
+   * A token that was just rotated is presented again. Usually the browser never got the new cookie
+   * (it navigated away mid-request, the network dropped, a phone slept) or a second tab refreshed at
+   * the same moment. Returns the family's live session to rotate instead of signing the user out,
+   * when this is the latest rotation and the newer session hasn't been used since (or it's within a
+   * minute). Anything else is treated as reuse of a stolen token. Null = reuse.
+   */
+  private async lostRotation(row: AuthSession) {
+    const rotatedAt = row.revokedAt!.getTime();
+    const newer = await this.prisma.db.authSession.count({ where: { familyId: row.familyId, id: { not: row.id }, revokedReason: 'rotated', revokedAt: { gt: row.revokedAt! } } });
+    if (newer > 0) return null;
+    const current = await this.prisma.db.authSession.findFirst({
+      where: { familyId: row.familyId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { lastActiveAt: 'desc' },
+    });
+    if (!current) return null;
+    const recent = Date.now() - rotatedAt <= ROTATION_GRACE_MS;
+    // lastActiveAt starts at the rotation and moves on the first request with the new access
+    // token, which only a browser that received the new cookie can make.
+    const unused = current.lastActiveAt.getTime() <= rotatedAt + 1_000;
+    return recent || unused ? current : null;
+  }
+
+  private async rotateRow(row: AuthSession) {
     const user = await this.prisma.db.user.findUnique({ where: { id: row.userId }, select: { id: true, status: true } });
     if (!user) throw new ApiError('SESSION_EXPIRED');
     if (user.status === 'suspended' || user.status === 'closed') {

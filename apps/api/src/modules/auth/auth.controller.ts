@@ -17,6 +17,14 @@ import { ApiError } from '../../common/api-error';
 import { AuthService, type SignedIn } from './auth.service';
 import { SessionService } from './session.service';
 
+const originOf = (url: string) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+
 /** User auth endpoints (Doc 06 §5.1). */
 @Controller('auth')
 export class AuthController {
@@ -31,10 +39,26 @@ export class AuthController {
     return s.body;
   }
 
-  /** Cookie-authenticated endpoints need an allowed Origin (Doc 06 §2.1 CSRF). */
+  /**
+   * Cookie-authenticated endpoints need an allowed Origin (Doc 06 §2.1 CSRF): one listed in
+   * CORS_ALLOWED_ORIGINS or WEB_APP_URL, or the site's own host. The web app calls the API through
+   * its own domain (Next rewrites, nginx), so a page on that domain is same-origin even when the
+   * env list misses a variant like www or http. A cross-site page still fails: its Origin host never
+   * matches the host the request was sent to.
+   */
   private assertOrigin(req: Request) {
     const origin = req.header('origin');
-    if (!origin || !getEnv().CORS_ALLOWED_ORIGINS.includes(origin)) throw new ApiError('FORBIDDEN', 'Request origin not allowed.');
+    const env = getEnv();
+    if (origin && (env.CORS_ALLOWED_ORIGINS.includes(origin) || originOf(env.WEB_APP_URL) === origin)) return;
+    let originHost: string | null = null;
+    try {
+      originHost = origin ? new URL(origin).hostname.toLowerCase() : null;
+    } catch {
+      originHost = null;
+    }
+    const hostOf = (h: string | undefined) => h?.split(',')[0]?.trim().toLowerCase().replace(/:\d+$/, '') || null;
+    const requestHosts = [hostOf(req.header('x-forwarded-host')), hostOf(req.header('host'))];
+    if (!originHost || !requestHosts.includes(originHost)) throw new ApiError('FORBIDDEN', 'Request origin not allowed.');
   }
 
   @Post('register')

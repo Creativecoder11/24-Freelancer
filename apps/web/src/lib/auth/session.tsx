@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuthenticatedResponse, Me } from '@24f/shared';
-import { Spinner } from '@24f/ui';
-import { api, ApiError, getAccessToken, hasSessionHint, logout, setAccessToken } from '@/lib/api/client';
+import { Button, EmptyState, Spinner } from '@24f/ui';
+import { api, ApiError, getAccessToken, hasSessionHint, isSignedOutError, logout, setAccessToken } from '@/lib/api/client';
 import { postAuthPath, safeNext } from '@/lib/next-param';
 
 export const meKey = ['me'] as const;
@@ -59,7 +59,8 @@ export function RequireSession({ children }: { children: (me: Me) => React.React
   const router = useRouter();
   const pathname = usePathname();
   const me = useMe();
-  const failed = me.isError && me.error.status > 0 && me.error.status < 500;
+  // Only a real sign-out (expired, revoked, suspended, closed) leaves the page. Other errors offer a retry.
+  const failed = me.isError && isSignedOutError(me.error);
   useEffect(() => {
     const guest = !hasSessionHint() && !getAccessToken();
     if (guest || failed) {
@@ -70,6 +71,13 @@ export function RequireSession({ children }: { children: (me: Me) => React.React
       router.replace(`/login${qs.size ? `?${qs}` : ''}`);
     }
   }, [failed, me.error, pathname, router]);
+  if (!me.data && me.isError && !failed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface p-6">
+        <EmptyState icon="alert-triangle" title="We couldn’t load your account" body={me.error.message} action={<Button onClick={() => void me.refetch()}>Try again</Button>} />
+      </div>
+    );
+  }
   if (!me.data) return <FullPageSpinner />;
   return <>{children(me.data)}</>;
 }

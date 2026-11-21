@@ -123,6 +123,13 @@ async function raw<T>(path: string, opts: RequestOptions, token: string | null):
 
 // ----- single-flight refresh -----
 
+/** Errors that mean the session is really over. Anything else (blocked origin, rate limit, server
+ *  or network trouble) keeps the user signed in so the next attempt can succeed. */
+const SIGNED_OUT_CODES = new Set(['SESSION_EXPIRED', 'UNAUTHENTICATED', 'ACCOUNT_SUSPENDED', 'ACCOUNT_CLOSED']);
+export function isSignedOutError(e: unknown): boolean {
+  return e instanceof ApiError && SIGNED_OUT_CODES.has(e.code);
+}
+
 let refreshing: Promise<string | null> | null = null;
 
 /** Swaps the refresh cookie for an access token. One request in flight at a time. */
@@ -140,7 +147,7 @@ export function refreshAccessToken(): Promise<string | null> {
           await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
           continue;
         }
-        if (e instanceof ApiError && e.status !== 0 && e.status < 500) {
+        if (isSignedOutError(e)) {
           setAccessToken(null);
           clearSessionHint();
           expiredListeners.forEach((l) => l());
@@ -149,7 +156,8 @@ export function refreshAccessToken(): Promise<string | null> {
         throw e;
       }
     }
-    return null;
+    // Still racing after three tries: a temporary failure, not a sign-out.
+    throw new ApiError(0, 'REFRESH_RACE', 'We couldn’t refresh your session. Try again.');
   })().finally(() => {
     refreshing = null;
   });
