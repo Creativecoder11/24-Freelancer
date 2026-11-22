@@ -113,7 +113,7 @@ export function OverviewPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 id="rec-h" className="font-display text-h4 text-fg">
-                Recommended for you
+                Recommended
               </h2>
               <p className="mt-1 hidden text-body-sm text-fg-tertiary tablet:block">
                 {o
