@@ -12,3 +12,6 @@ test-results
 
 # Uploaded files (KYC documents, proofs, logos). User data: never commit.
 apps/api/.storage/
+
+# Local credentials notes: never commit (the repo is public).
+CREDENTIALS*.md

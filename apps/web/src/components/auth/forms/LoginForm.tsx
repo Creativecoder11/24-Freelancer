@@ -6,7 +6,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { formatMmSs, identifier, type LoginResponse, type OtpChallengeResponse } from '@24f/shared';
-import { Alert, Button, Checkbox, Field, PasswordField, SegmentedControl } from '@24f/ui';
+import { Alert, Button, Checkbox, Field, PasswordField } from '@24f/ui';
 import { api } from '@/lib/api/client';
 import { applyServerError } from '@/lib/form-errors';
 import { storeChallenge, takePrefill } from '@/lib/auth/challenge';
@@ -14,9 +14,6 @@ import { GuestOnlyGate, useSignedIn } from '@/lib/auth/session';
 import { safeNext } from '@/lib/next-param';
 import { useCountdown } from '@/lib/use-countdown';
 import { AuthHeading } from '../AuthShell';
-
-/** One-time-code sign-in is hidden while OTP is switched off (NEXT_PUBLIC_AUTH_OTP_ENABLED=false). */
-const OTP_ENABLED = process.env.NEXT_PUBLIC_AUTH_OTP_ENABLED !== 'false';
 
 const COPY = {
   invalid: 'That email, phone or password doesn’t match. Try again or reset your password.',
@@ -32,17 +29,11 @@ const passwordSchema = z.object({
 });
 type PasswordValues = z.input<typeof passwordSchema>;
 
-const otpSchema = z.object({ identifier: identifier('Enter your email or phone.') });
-type OtpValues = z.input<typeof otpSchema>;
-
-type Method = 'password' | 'otp';
-
-/** SCR-AUTH-01 Sign in (Figma 26:477, mobile 46:764) with the one-time-code variant (G-02). */
+/** SCR-AUTH-01 Sign in (Figma 26:477, mobile 46:764) — email/phone and password only. */
 export function LoginForm() {
   const params = useSearchParams();
   const next = safeNext(params.get('next'));
   const reason = params.get('reason');
-  const [method, setMethod] = useState<Method>('password');
   const [prefill, setPrefill] = useState('');
   useEffect(() => {
     const p = takePrefill();
@@ -53,27 +44,12 @@ export function LoginForm() {
     <GuestOnlyGate>
       <AuthHeading title="Welcome back" sub="Sign in to pick up where you left off." />
       <div className="mt-5 flex flex-col gap-6 tablet:mt-6">
-        {OTP_ENABLED ? (
-        <SegmentedControl<Method>
-          label="Sign-in method"
-          kind="tabs"
-          fullWidth
-          value={method}
-          onChange={setMethod}
-          options={[
-            { value: 'password', label: 'Password', controls: 'signin-panel' },
-            { value: 'otp', label: 'One-time code', controls: 'signin-panel' },
-          ]}
-        />
-        ) : null}
         {reason ? (
           <Alert tone={reason === 'session_expired' ? 'info' : 'danger'}>
             {reason === 'suspended' ? COPY.suspended : reason === 'closed' ? COPY.closed : COPY.sessionExpired}
           </Alert>
         ) : null}
-        <div id="signin-panel" role="tabpanel" aria-label={method === 'password' ? 'Password' : 'One-time code'}>
-          {method === 'password' ? <PasswordLogin next={next} prefill={prefill} /> : <OtpLogin next={next} prefill={prefill} />}
-        </div>
+        <PasswordLogin next={next} prefill={prefill} />
       </div>
       <NextLink
         href="/help"
@@ -138,7 +114,7 @@ function PasswordLogin({ next, prefill }: { next: string | null; prefill: string
       {rootErr && !(rootErr.type === 'TOO_MANY_ATTEMPTS' && !locked) ? (
         <div id="login-error" className="mb-6">
           <Alert tone="danger" action={rootErr.type === 'ACCOUNT_SUSPENDED' ? <NextLink href="/about#contact" className="text-label-md text-fg-brand hover:underline">Contact support</NextLink> : undefined}>
-            {rootErr.type === 'TOO_MANY_ATTEMPTS' ? `Too many tries. Try again in ${formatMmSs(lockLeft)}, or use a one-time code.` : rootErr.message}
+            {rootErr.type === 'TOO_MANY_ATTEMPTS' ? `Too many tries. Try again in ${formatMmSs(lockLeft)}, or reset your password.` : rootErr.message}
           </Alert>
         </div>
       ) : null}
@@ -200,42 +176,3 @@ function PasswordLogin({ next, prefill }: { next: string | null; prefill: string
     </form>
   );
 }
-
-function OtpLogin({ next, prefill }: { next: string | null; prefill: string }) {
-  const router = useRouter();
-  const form = useForm<OtpValues>({ resolver: zodResolver(otpSchema), mode: 'onBlur', reValidateMode: 'onChange', defaultValues: { identifier: prefill } });
-  const { register, handleSubmit, formState } = form;
-  const onSubmit = handleSubmit(async (values) => {
-    try {
-      const res = await api.post<OtpChallengeResponse>('/auth/login/otp', { ...values, keep_signed_in: true }, { auth: false });
-      storeChallenge(res, { keep_signed_in: true, next, identifier: values.identifier, back: '/login' });
-      router.push(`/verify?purpose=login${next ? `&next=${encodeURIComponent(next)}` : ''}`);
-    } catch (err) {
-      applyServerError(err, form);
-    }
-  });
-  const rootErr = formState.errors.root?.server;
-  return (
-    <form noValidate onSubmit={onSubmit} className="flex flex-col gap-6">
-      {rootErr ? (
-        <Alert tone="danger">{rootErr.message}</Alert>
-      ) : null}
-      <Field
-        label="Email or phone"
-        type="text"
-        inputMode="email"
-        autoComplete="username"
-        autoCapitalize="none"
-        spellCheck={false}
-        helper="We’ll send you a 6-digit code. It expires after 10 minutes."
-        error={formState.errors.identifier?.message}
-        readOnly={formState.isSubmitting}
-        {...register('identifier')}
-      />
-      <Button type="submit" size="L" fullWidth loading={formState.isSubmitting} loadingText="Sending…">
-        Send code
-      </Button>
-    </form>
-  );
-}
-
