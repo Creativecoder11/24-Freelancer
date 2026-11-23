@@ -302,7 +302,7 @@ export function AppShell({ mode, user, badges, onLogout, header, children, hideT
         <Sidebar mode={mode} items={items} user={user} onLogout={onLogout} onNavigate={() => setDrawer(false)} className="-mx-5 -mt-5 px-4 pt-2" />
       </Drawer>
       <Topbar {...header} mode={mode} user={user} onLogout={onLogout} onOpenMenu={() => setDrawer(true)} />
-      <main id="main" className={cn('mx-auto max-w-[1184px] px-5 py-6 tablet:px-8 tablet:py-8 desktop:px-10', !hideTabBar && 'pb-28 tablet:pb-8')}>
+      <main id="main" className={cn('w-full min-w-0 px-5 py-6 tablet:px-8 tablet:py-8 desktop:px-10', !hideTabBar && 'pb-28 tablet:pb-8')}>
         <div ref={content}>{children}</div>
       </main>
       {!hideTabBar ? <MobileTabBar mode={mode} badges={{ Tasks: badges?.tasks, Review: badges?.submissions }} /> : null}

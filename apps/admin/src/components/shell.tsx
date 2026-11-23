@@ -3,7 +3,7 @@ import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
-  ArrowDownCircle, ArrowUpCircle, BadgeCheck, BarChart3, BookOpen, FileText, Flag, Gift, History, Inbox, Layers, LayoutDashboard, ListChecks, Menu, Scale, Send, Settings, ShieldCheck, UserCog, Users, type LucideIcon,
+  ArrowDownCircle, ArrowUpCircle, BadgeCheck, BarChart3, BookOpen, FileText, Flag, FolderOpen, Gift, History, Inbox, Layers, LayoutDashboard, ListChecks, Menu, Scale, Settings, ShieldCheck, UserCog, Users, type LucideIcon,
 } from 'lucide-react';
 import { ActionMenu, Alert, Avatar, Drawer, IconButton, Logo, Search, cn, gsap, initialsFrom, toast, useGSAP, MOTION_OK } from '@24f/ui';
 import { useSession } from '@/lib/session';
@@ -24,7 +24,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'PEOPLE',
     items: [
-      { label: 'Users', href: '/users', icon: Users, perms: ['users.read_masked', 'users.read'] },
+      { label: 'Users', href: '/users', icon: Users, perms: ['users.read_masked', 'users.read'], badge: 'appeals_open' },
       { label: 'KYC review', href: '/kyc', icon: ShieldCheck, perms: ['kyc.read_status', 'kyc.read'], badge: 'kyc_pending' },
       { label: 'Employer verification', href: '/employers/verification', icon: BadgeCheck, perms: ['employers.verify'], badge: 'employer_verification' },
     ],
@@ -42,9 +42,9 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'MONEY',
     items: [
       { label: 'Deposits', href: '/deposits', icon: ArrowDownCircle, perms: ['deposits.read_masked', 'deposits.read'], badge: 'deposits_pending_approval' },
-      { label: 'Withdrawals', href: '/withdrawals', icon: ArrowUpCircle, perms: ['withdrawals.read_masked', 'withdrawals.read'], badge: 'withdrawals_requested' },
-      { label: 'Ledger', href: '/ledger', icon: BookOpen, perms: ['ledger.read', 'ledger.read_aggregate'], badge: 'adjustments_pending' },
-      { label: 'Referrals', href: '/referrals', icon: Gift, perms: ['referrals.read', 'referrals.read_aggregate'] },
+      { label: 'Withdrawals', href: '/withdrawals', icon: ArrowUpCircle, perms: ['withdrawals.read_masked', 'withdrawals.read'], badge: 'withdrawals_action' },
+      { label: 'Ledger', href: '/ledger', icon: BookOpen, perms: ['ledger.read', 'ledger.read_aggregate'], badge: 'ledger_action' },
+      { label: 'Referrals', href: '/referrals', icon: Gift, perms: ['referrals.read', 'referrals.read_aggregate'], badge: 'referrals_flagged' },
       { label: 'Reports', href: '/reports/financial', icon: BarChart3, perms: ['reports.financial', 'reports.operational'] },
     ],
   },
@@ -53,7 +53,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { label: 'Support messages', href: '/support/messages', icon: Inbox, perms: ['support.reply'], badge: 'support_new' },
       { label: 'Content', href: '/content', icon: FileText, perms: ['content.write'] },
-      { label: 'Broadcast', href: '/notifications/broadcast', icon: Send, perms: ['broadcast.send'] },
+      { label: 'Media', href: '/media', icon: FolderOpen, perms: ['users.read'] },
     ],
   },
   {
@@ -166,7 +166,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const [header, setHeader] = useState<{ title: string; subtitle?: string }>({ title: 'Dashboard' });
   const [q, setQ] = useState('');
-  const dash = useApi<Dashboard>(can('dashboard.read') ? '/admin/dashboard' : null, { t: tick }, { pollMs: 60_000 });
+  const dash = useApi<Dashboard>(can('dashboard.read') ? '/admin/dashboard' : null, { t: tick }, { pollMs: 30_000 });
   const queues = dash.data?.queues ?? {};
   const content = useRef<HTMLDivElement>(null);
 

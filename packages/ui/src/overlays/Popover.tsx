@@ -58,7 +58,7 @@ export function Popover({
         role={role}
         aria-label={aria['aria-label']}
         style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width }}
-        className={cn('fixed z-[200] rounded-[12px] border border-line bg-surface shadow-lg', className)}
+        className={cn('fixed z-[var(--fl-z-menu)] rounded-[12px] border border-line bg-surface shadow-lg', className)}
       >
         {children}
       </div>

@@ -9,7 +9,7 @@ import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, dec, usd2 } from '../employer/employer-common';
 import { ReferralCreditService } from '../employer/referral-credit';
 import { EmployerWalletService, METHOD_LABEL } from '../employer-wallet/employer-wallet.service';
-import { CHANNELS, channelLabel, isManualChannel, type ManualChannel } from './manual-channels';
+import { CHANNELS, channelLabel, isManualChannel, normalizeRef, type ManualChannel } from './manual-channels';
 import { JobsService } from '../jobs/jobs.service';
 import { MockPaymentProvider, canonicalJson, mockSign, type PaymentProviderAdapter } from './payment-provider';
 
@@ -100,7 +100,7 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
     if (b.channel) {
       const def = CHANNELS[b.channel];
       const senderNumber = String(b.sender_number ?? '').trim();
-      const trxId = String(b.trx_id ?? '').trim().toUpperCase();
+      const trxId = normalizeRef(def, b.trx_id);
       const fields: Record<string, string[]> = {};
       if (!def.senderPattern.test(senderNumber)) fields.sender_number = [def.senderError];
       if (!def.refPattern.test(trxId)) fields.trx_id = [def.refError];

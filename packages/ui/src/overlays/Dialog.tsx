@@ -15,7 +15,8 @@ export interface DialogProps {
   type?: 'confirm' | 'destructive' | 'success' | 'form';
   title: string;
   description?: React.ReactNode;
-  width?: 480 | 560;
+  /** 960: wide viewers (documents, images). */
+  width?: 480 | 560 | 960;
   children?: React.ReactNode;
   footer: React.ReactNode;
   /** Disables ×, Esc and scrim while a request is pending. */
@@ -97,7 +98,7 @@ export function Dialog({
             'relative flex flex-col bg-surface shadow-xl outline-none',
             asSheet
               ? 'max-h-[90vh] w-full rounded-t-[20px] pb-[env(safe-area-inset-bottom)]'
-              : cn('max-h-[calc(100vh-48px)] w-full rounded-[20px]', width === 560 ? 'max-w-[560px]' : 'max-w-[480px]'),
+              : cn('max-h-[calc(100vh-48px)] w-full rounded-[20px]', width === 960 ? 'max-w-[960px]' : width === 560 ? 'max-w-[560px]' : 'max-w-[480px]'),
           )}
         >
           {asSheet ? <SheetHandle {...drag} /> : null}

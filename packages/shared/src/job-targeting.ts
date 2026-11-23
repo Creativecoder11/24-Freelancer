@@ -1,6 +1,6 @@
 /**
- * Job location targeting (post-a-job step 1). A job targets one zone; the employer can hide
- * individual countries inside it. Workers only see and start jobs that include their profile
+ * Job location targeting (post-a-job step 1). A job targets one zone; the employer can limit it
+ * to chosen countries inside that zone ("show in") and hide individual countries ("hide from"). Workers only see and start jobs that include their profile
  * country. Shared by the API (validation, filtering) and the web wizard.
  */
 
@@ -67,6 +67,22 @@ export function zoneTargetCountries(slug: string): string[] {
   return [...(jobZone(slug)?.countries ?? [])];
 }
 
+/**
+ * Stored target list for a zone plus the employer's "show in" picks. No picks → the whole zone.
+ * Picks are sorted and de-duplicated.
+ */
+export function resolveTargetCountries(slug: string, picked: readonly string[]): string[] {
+  const p = [...new Set(picked.map((c) => c.toUpperCase()))].sort();
+  return p.length ? p : zoneTargetCountries(slug);
+}
+
+/** The employer's "show in" picks from a stored target list: [] when it is just the zone default. */
+export function pickedTargetCountries(slug: string, stored: readonly string[]): string[] {
+  const zone = [...zoneTargetCountries(slug)].sort();
+  const s = [...new Set(stored)].sort();
+  return s.length === zone.length && s.every((c, i) => c === zone[i]) ? [] : s;
+}
+
 /** Can a worker in `country` see/start a job with this targeting? Empty target list = every country. */
 export function jobVisibleIn(country: string, t: { target_countries: readonly string[]; excluded_countries: readonly string[] }): boolean {
   const c = country.toUpperCase();
@@ -74,8 +90,13 @@ export function jobVisibleIn(country: string, t: { target_countries: readonly st
   return !t.target_countries.length || t.target_countries.includes(c);
 }
 
-/** "Asia · 2 countries hidden" / "International". */
-export function targetingLabel(zoneSlug: string, excluded: readonly string[]): string {
+/** "Asia · 2 countries hidden" / "Asia · shown in 3 countries" / "International". */
+export function targetingLabel(zoneSlug: string, excluded: readonly string[], shown: readonly string[] = []): string {
   const z = jobZone(zoneSlug)?.label ?? 'International';
-  return excluded.length ? `${z} · ${excluded.length} ${excluded.length === 1 ? 'country' : 'countries'} hidden` : z;
+  const n = (k: number) => `${k} ${k === 1 ? 'country' : 'countries'}`;
+  const parts = [z];
+  if (shown.length) parts.push(shown.length <= 2 ? `only ${shown.map((c) => COUNTRY_NAMES[c] ?? c).join(', ')}` : `shown in ${n(shown.length)}`);
+  const hidden = excluded.filter((c) => !shown.length || shown.includes(c));
+  if (hidden.length) parts.push(`${n(hidden.length)} hidden`);
+  return parts.join(' · ');
 }

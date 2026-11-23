@@ -29,5 +29,6 @@ export function toRowData(j: JobCard, now = Date.now()): JobRowData {
     isNew: j.is_new,
     isPinned: !!j.is_pinned,
     isTopped: !!j.is_topped,
+    isOwn: 'is_own' in j && !!j.is_own,
   };
 }

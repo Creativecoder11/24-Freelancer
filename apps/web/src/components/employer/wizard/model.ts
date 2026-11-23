@@ -12,6 +12,9 @@ export interface StepItem {
 export interface WizardForm {
   // 1 · Location
   target_zone: string;
+  /** Countries to show the job in (inside the zone). Empty = the whole zone. */
+  target_countries: string[];
+  /** Countries to hide the job from. */
   excluded_countries: string[];
   // 2 · Category
   category: string | null;
@@ -94,6 +97,7 @@ export interface ValidateCtx {
 export function emptyForm(d?: JobDefaults | null): WizardForm {
   return {
     target_zone: 'international',
+    target_countries: [],
     excluded_countries: [],
     category: null,
     subcategory: null,
@@ -134,6 +138,7 @@ export function formFromJob(j: JobDetail): WizardForm {
   const shots = reqTypes.filter((t) => t === 'screenshot').length;
   return {
     target_zone: j.target_zone || 'international',
+    target_countries: j.target_countries ?? [],
     excluded_countries: j.excluded_countries ?? [],
     category: j.category?.slug ?? null,
     subcategory: j.subcategory?.slug ?? null,
@@ -173,7 +178,7 @@ export function proofRequirements(f: Pick<WizardForm, 'proof_types' | 'screensho
 
 /** PATCH/POST body for one step (Doc 06 §5.8, five-step wizard). */
 export function payloadFor(step: number, f: WizardForm): Record<string, unknown> {
-  if (step === 1) return { target_zone: f.target_zone, excluded_countries: f.excluded_countries };
+  if (step === 1) return { target_zone: f.target_zone, target_countries: f.target_countries, excluded_countries: f.excluded_countries };
   if (step === 2) return { category: f.category, subcategory: f.subcategory };
   if (step === 3)
     return {
@@ -223,7 +228,10 @@ export function validate(step: number, f: WizardForm, ctx: ValidateCtx = {}): Re
   if (step === 1) {
     const all = zoneCountries(f.target_zone);
     if (!all.length) e.target_zone = 'Choose where workers can be.';
-    else if (f.excluded_countries.length >= all.length) e.excluded_countries = 'Keep at least one country open.';
+    else {
+      const shown = f.target_countries.length ? f.target_countries : all;
+      if (shown.every((c) => f.excluded_countries.includes(c))) e.excluded_countries = 'Keep at least one country open.';
+    }
   }
   if (step === 2) {
     if (!f.category) e.category = 'Choose a category.';

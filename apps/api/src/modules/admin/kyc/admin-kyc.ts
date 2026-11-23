@@ -86,7 +86,10 @@ export class AdminKycService {
     if (!k) throw new ApiError('NOT_FOUND');
     const dups = await this.db.kycVerification.findMany({ where: { documentNumberHash: k.documentNumberHash, userId: { not: k.userId } }, distinct: ['userId'], include: { user: { select: { publicId: true } } } });
     const purged = !!k.purgedAt;
-    const url = (u: string | null) => (u && !purged ? this.uploads.signedUrl(u, 'full') : null);
+    // Files deleted from Media (or missing) show as "No image" instead of a broken link.
+    const ids = [k.frontUploadId, k.backUploadId, k.selfieUploadId].filter((x): x is string => !!x);
+    const live = new Set((await this.db.upload.findMany({ where: { id: { in: ids }, status: 'uploaded', deletedAt: null }, select: { id: true } })).map((x) => x.id));
+    const url = (u: string | null) => (u && !purged && live.has(u) ? this.uploads.kycSignedUrl(u) : null);
     const recent = await this.db.auditLog.findFirst({ where: { action: 'kyc.view_image', entityId: k.id, actorAdminId: { not: ctx.id }, createdAt: { gt: new Date(Date.now() - 5 * 60_000) } }, include: { actorAdmin: { select: { fullName: true } } } });
     if (!purged) await this.audit.record(ctx, { action: 'kyc.view_image', entityType: 'kyc_verification', entityId: k.id, entityRef: k.user.publicId });
     return {

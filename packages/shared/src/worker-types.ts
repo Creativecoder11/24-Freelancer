@@ -23,6 +23,8 @@ export type MyJobState = 'not_started' | 'in_progress' | 'done';
 export interface WorkerJobCard extends JobCard {
   eligibility_state: EligibilityState;
   my_state: MyJobState;
+  /** The worker posted this job (shown, but they can't take it — BR-022). */
+  is_own: boolean;
 }
 
 export interface WaitingTask {

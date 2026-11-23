@@ -1,5 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Injectable, Logger, Param, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
-import { createHmac, randomBytes } from 'node:crypto';
+import { Body, Controller, Delete, Get, Injectable, Logger, Param, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Prisma } from '@24f/db';
 import { PrismaService } from '../../../common/prisma.service';
 import { RedisService } from '../../../common/redis.service';
@@ -8,14 +7,13 @@ import { getEnv } from '../../../config/env';
 import { AdminGuard, AdminAuditInterceptor } from '../core/admin.guard';
 import { Admin, Perms, type AdminCtx } from '../core/admin-context';
 import { AuditService } from '../core/audit.service';
-import { adminEnv } from '../core/admin-env';
-import { bool, iso, isUnique, needEnum, needReason, needText, optText, paged, paging, type Q } from '../core/helpers';
+import { bool, iso, isUnique, needEnum, needText, optText, paged, paging, type Q } from '../core/helpers';
 
 const CONTACT_STATUS = ['new', 'in_progress', 'answered', 'closed', 'spam'] as const;
 const LEGAL = ['terms', 'privacy', 'refund', 'cancellation'] as const;
 const PLACEMENTS = ['home', 'help'] as const;
 
-/** Support inbox, content CMS and broadcast (Doc 06 §6.14–6.16; Doc 09 SCR-ADM-15/16/17, §16). */
+/** Support inbox and content CMS (Doc 06 §6.14–6.16; Doc 09 SCR-ADM-15/16/17, §16). */
 @Injectable()
 export class AdminCmsService {
   private readonly log = new Logger('AdminCms');
@@ -310,68 +308,6 @@ export class AdminCmsService {
       throw e;
     }
   }
-
-  // ------------------------------------------------------------------ broadcast
-
-  private segmentWhere(seg: Record<string, unknown>): Prisma.UserWhereInput {
-    const where: Prisma.UserWhereInput = { anonymisedAt: null, status: seg.status === 'active_restricted' ? { in: ['active', 'restricted'] } : 'active' };
-    if (seg.audience === 'workers') where.signupRole = 'worker';
-    if (seg.audience === 'employers') where.employerProfile = { isNot: null };
-    if (seg.kyc_status && seg.kyc_status !== 'any') where.kycStatus = seg.kyc_status as 'verified';
-    if (seg.country_code) where.countryCode = String(seg.country_code).toUpperCase().slice(0, 2);
-    const days = Number(seg.active_days);
-    if (days > 0) where.lastLoginAt = { gte: new Date(Date.now() - days * 86_400_000) };
-    return where;
-  }
-
-  private broadcastInput(b: Record<string, unknown>) {
-    const seg = (b.segment ?? {}) as Record<string, unknown>;
-    needEnum(seg.audience, ['all', 'workers', 'employers'] as const, 'segment.audience');
-    const title = needText(b.title, 120, 'title', 'Enter a title.');
-    const body = needText(b.body, 300, 'body', 'Enter a message.');
-    const link = optText(b.link_path, 300, 'link_path');
-    if (link && (!link.startsWith('/') || link.startsWith('//'))) throw new ApiError('VALIDATION_FAILED', undefined, { link_path: ['Use a same-site path that starts with /.'] });
-    return { seg, title, body, link };
-  }
-
-  private token(payload: string) {
-    return createHmac('sha256', Buffer.from(String(process.env.ADMIN_JWT_ACCESS_SECRET ?? getEnv().JWT_ACCESS_SECRET))).update(payload).digest('base64url');
-  }
-
-  async preview(b: Record<string, unknown>) {
-    const i = this.broadcastInput(b);
-    const count = await this.db.user.count({ where: this.segmentWhere(i.seg) });
-    const nonce = randomBytes(8).toString('hex');
-    const exp = Date.now() + 15 * 60_000;
-    const payload = JSON.stringify([i.seg, i.title, i.body, i.link, exp, nonce]);
-    return { recipient_count: count, confirm_token: `brc_${exp}_${nonce}_${this.token(payload)}`, sample: { title: i.title, body: i.body, link_path: i.link } };
-  }
-
-  async send(ctx: AdminCtx, b: Record<string, unknown>) {
-    const i = this.broadcastInput(b);
-    const reason = needReason(b.reason);
-    const tok = String(b.confirm_token ?? '');
-    const m = /^brc_(\d+)_([0-9a-f]{16})_(.+)$/.exec(tok);
-    if (!m || Number(m[1]) < Date.now() || this.token(JSON.stringify([i.seg, i.title, i.body, i.link, Number(m[1]), m[2]])) !== m[3]) throw new ApiError('INVALID_STATE', 'The preview expired. Preview again.');
-    const users = await this.db.user.findMany({ where: this.segmentWhere(i.seg), select: { id: true, activeMode: true } });
-    if (!users.length) throw new ApiError('INVALID_STATE', 'No users match this group. Change the filters.');
-    const env = adminEnv();
-    if ((users.length >= 1000 || b.send_email === true) && (env.totpRequired || ctx.totpEnrolled) && (!ctx.reauthAt || ctx.reauthAt.getTime() + env.reauthWindowMinutes * 60_000 < Date.now())) throw new ApiError('ADMIN_REAUTH_REQUIRED');
-    const broadcastId = (await this.db.$queryRaw<{ id: string }[]>`SELECT uuid_generate_v7() AS id`)[0]!.id;
-    const exp = new Date(Date.now() + 90 * 86_400_000);
-    for (let k = 0; k < users.length; k += 500) {
-      await this.db.notification.createMany({ data: users.slice(k, k + 500).map((u) => ({ userId: u.id, audience: u.activeMode, category: 'system' as const, type: 'broadcast', title: i.title, body: i.body, linkPath: i.link, data: { broadcast_id: broadcastId }, dedupeKey: `broadcast:${broadcastId}`, expiresAt: exp })) });
-    }
-    await this.audit.record(ctx, { action: 'notification.broadcast', entityType: 'broadcast', entityId: broadcastId, reason, after: { segment: i.seg, count: users.length, title: i.title, body: i.body, link_path: i.link, send_email: b.send_email === true } });
-    return { broadcast_id: broadcastId, recipient_count: users.length, status: 'sent' };
-  }
-
-  async history(q: Q) {
-    const p = paging(q);
-    const where: Prisma.AuditLogWhereInput = { action: 'notification.broadcast' };
-    const [rows, total] = await Promise.all([this.db.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, skip: p.skip, take: p.take, include: { actorAdmin: { select: { fullName: true } } } }), this.db.auditLog.count({ where })]);
-    return paged(rows.map((r) => { const a = (r.afterData ?? {}) as Record<string, unknown>; return { broadcast_id: r.entityId, title: a.title, body: a.body, recipient_count: a.count, segment: a.segment, sent_by: r.actorAdmin?.fullName ?? null, created_at: iso(r.createdAt), status: 'sent' }; }), total, p);
-  }
 }
 
 @Controller('admin')
@@ -480,25 +416,5 @@ export class AdminCmsController {
   @Perms('content.write')
   publishLegal(@Admin() ctx: AdminCtx, @Param('slug') slug: string, @Body() b: Record<string, unknown>) {
     return this.svc.publishLegal(ctx, slug, b ?? {});
-  }
-
-  @Post('notifications/broadcast/preview')
-  @HttpCode(200)
-  @Perms('broadcast.send')
-  preview(@Body() b: Record<string, unknown>) {
-    return this.svc.preview(b ?? {});
-  }
-
-  @Post('notifications/broadcast')
-  @HttpCode(202)
-  @Perms('broadcast.send')
-  send(@Admin() ctx: AdminCtx, @Body() b: Record<string, unknown>) {
-    return this.svc.send(ctx, b ?? {});
-  }
-
-  @Get('notifications/broadcast')
-  @Perms('broadcast.send')
-  history(@Query() q: Q) {
-    return this.svc.history(q);
   }
 }

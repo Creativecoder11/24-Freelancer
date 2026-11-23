@@ -48,7 +48,7 @@ export function FriendsPage() {
   const counts = list.data?.meta.counts;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1104px] gap-6 desktop:grid-cols-[minmax(0,720px)_360px]">
+    <div className="grid w-full gap-6 desktop:grid-cols-[minmax(0,1fr)_360px]">
       <div className="flex min-w-0 flex-col gap-6">
         <Tabs
           label="Friends"

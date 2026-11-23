@@ -6,7 +6,7 @@ import { Paged } from '../../common/envelope.interceptor';
 import { SettingsService } from '../settings/settings.service';
 import { EmployerCore, dec, dhakaDate, dhakaMonthStart, shortTitle, usd2 } from '../employer/employer-common';
 import { EmployerService } from '../employer/employer.service';
-import { CHANNELS, MANUAL_CHANNELS } from '../deposits/manual-channels';
+import { CHANNELS, MANUAL_CHANNELS, accountTypeOf } from '../deposits/manual-channels';
 
 export const METHOD_LABEL: Record<string, string> = { crypto: 'Crypto', mobile_wallet: 'Mobile wallet', card: 'Card' };
 const METHOD_SUB: Record<string, string> = { crypto: 'Binance Pay · USDT (TRC20)', mobile_wallet: 'bKash · Nagad · Rocket', card: 'Visa · Mastercard' };
@@ -136,16 +136,17 @@ export class EmployerWalletService {
       if (!(await this.settings.get<boolean>(d.enabledKey, true))) continue;
       const account = String(await this.settings.get<string>(d.accountKey, d.accountDefault) ?? '').trim();
       if (!account || (d.currency === 'BDT' && !rate)) continue;
-      const instructions = channel === 'bkash' ? String(await this.settings.get<string>('bkash_manual_instructions', d.instructions)) : d.instructions;
+      const instructions = String((await this.settings.get<string>(d.instructionsKey, d.instructions)) ?? '').trim() || d.instructions;
       out.push({
         channel,
         label: d.label,
+        subtitle: d.subtitle,
         group: d.group,
         currency: d.currency,
         deposit_fx_rate: d.currency === 'BDT' && rate ? rate.toFixed(2) : null,
         account,
         account_label: d.accountLabel,
-        account_type: d.accountTypeKey ? String(await this.settings.get<string>(d.accountTypeKey, 'Personal (Send Money)')) : null,
+        account_type: d.accountTypeKey ? accountTypeOf(await this.settings.get<string>(d.accountTypeKey, 'Personal number')) : null,
         instructions,
         sender_label: d.senderLabel,
         sender_placeholder: d.senderPlaceholder,
@@ -197,6 +198,7 @@ export class EmployerWalletService {
         return `${title} · ${count} approval${count === 1 ? '' : 's'}`;
       case 'platform_fee':
         if (p.kind === 'boost') return `${title} · Boost · ${Number(p.days ?? 0)} day${Number(p.days) === 1 ? '' : 's'}`;
+        if (p.kind === 'extra_workers') return `${title} · Extra-worker fee · ${Number(p.added ?? 0)} worker${Number(p.added) === 1 ? '' : 's'}`;
         if (p.kind === 'promotion') return `${title} · ${({ top: 'Top', pin: 'Pin', combo: 'Pin + Top' } as Record<string, string>)[String(p.promotion)] ?? 'Promotion'}`;
         return `${title} · ${count} approval${count === 1 ? '' : 's'} · ${p.percent ?? ''}%`;
       case 'job_release':
@@ -235,7 +237,7 @@ export class EmployerWalletService {
       running = running.plus(total);
       const isMove = r.type === 'job_reserve' || r.type === 'job_release';
       const amount = isMove ? na : total;
-      const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost' && r.description_params?.kind !== 'promotion')) && r.job_id;
+      const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost' && r.description_params?.kind !== 'promotion' && r.description_params?.kind !== 'extra_workers')) && r.job_id;
       const key = groupable ? `${r.type}:${r.job_id}:${dhakaDate(r.occurred_at)}` : r.public_ref;
       let g = groupable ? open.get(key) : undefined;
       if (!g) {

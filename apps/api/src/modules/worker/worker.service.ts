@@ -38,7 +38,8 @@ const DEFAULT_RULES = {
   not_allowed: ['No copy-paste from other workers or automated tools.', 'Don’t share the task materials outside this task.'],
 };
 
-type Skip = 'chip' | 'category' | 'time' | 'proof';
+/** Filters a query leaves out. `own`: keep the worker's own jobs (Find jobs lists them, marked, not startable). */
+type Skip = 'chip' | 'category' | 'time' | 'proof' | 'own';
 
 interface WorkerCtx {
   userId: string;
@@ -87,11 +88,13 @@ export class WorkerService {
   private where(q: Partial<WorkerJobsQuery>, c: WorkerCtx, skip: Skip[] = []) {
     const parts: Prisma.Sql[] = [
       Prisma.sql`j.status = 'running' AND j.ends_at > now() AND j.deleted_at IS NULL`,
-      Prisma.sql`j.employer_user_id <> ${c.userId}::uuid`, // BR-022
       Prisma.sql`(${STARTED})`, // scheduled jobs appear at starts_at
       // Location targeting: empty target list = every country; hidden countries never see it.
-      Prisma.sql`(cardinality(j.target_countries) = 0 OR ${c.country} = ANY(j.target_countries)) AND NOT (${c.country} = ANY(j.excluded_countries))`,
+      // The poster always sees their own job (they can't take it anyway).
+      Prisma.sql`(j.employer_user_id = ${c.userId}::uuid OR ((cardinality(j.target_countries) = 0 OR ${c.country} = ANY(j.target_countries)) AND NOT (${c.country} = ANY(j.excluded_countries))))`,
     ];
+    // BR-022: a worker can't take their own job. Find jobs still lists it (badge "Your job"); overview counts don't.
+    if (!skip.includes('own')) parts.push(Prisma.sql`j.employer_user_id <> ${c.userId}::uuid`);
     if (q.q) parts.push(Prisma.sql`(j.title ILIKE ${'%' + q.q.replace(/[%_\\]/g, '\\$&') + '%'} OR c.name ILIKE ${'%' + q.q.replace(/[%_\\]/g, '\\$&') + '%'} OR j.public_id = ${q.q.toUpperCase()})`);
     if (!skip.includes('chip') && q.chip && q.chip !== 'all') {
       if (q.chip === 'for_you') parts.push(c.interests.length ? Prisma.sql`c.slug IN (${Prisma.join(c.interests)})` : Prisma.sql`false`);
@@ -117,27 +120,28 @@ export class WorkerService {
       (e.employer_verified_at IS NOT NULL) AS employer_verified, j.reward_usd::text AS reward_usd, j.display_minutes,
       j.proof_types::text[] AS proof_types, j.slots_total, GREATEST(j.slots_left, 0) AS slots_left, j.published_at, j.ends_at,
       j.eligibility::text AS eligibility, j.min_approval_rate, (${PINNED}) AS is_pinned, (j.topped_at IS NOT NULL) AS is_topped,
+      (j.employer_user_id = ${c.userId}::uuid) AS is_own,
       EXISTS (SELECT 1 FROM submissions s WHERE s.job_id = j.id AND s.worker_user_id = ${c.userId}::uuid) AS done,
       EXISTS (SELECT 1 FROM slot_reservations r WHERE r.job_id = j.id AND r.worker_user_id = ${c.userId}::uuid AND r.status = 'active' AND r.expires_at > now()) AS in_progress`;
   }
 
-  private card(r: JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean }, c: WorkerCtx, newMin: number): WorkerJobCard {
+  private card(r: JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean; is_own: boolean }, c: WorkerCtx, newMin: number): WorkerJobCard {
     let eligibility: EligibilityState = 'eligible';
     if (r.eligibility === 'kyc_verified' && c.kyc !== 'verified') eligibility = 'kyc_required';
     else if (r.min_approval_rate > 0 && c.rate !== null && c.rate < r.min_approval_rate) eligibility = 'approval_rate';
     const my: MyJobState = r.done ? 'done' : r.in_progress ? 'in_progress' : 'not_started';
-    return { ...toJobCard(r, newMin), eligibility_state: eligibility, my_state: my };
+    return { ...toJobCard(r, newMin), eligibility_state: eligibility, my_state: my, is_own: !!r.is_own };
   }
 
   async jobs(userId: string, q: WorkerJobsQuery) {
     const db = this.prisma.db;
     const c = await this.ctx(userId);
     const newMin = await this.settings.number('job_new_badge_minutes', 60);
-    const [{ total }] = await db.$queryRaw<{ total: number }[]>`SELECT count(*)::int AS total ${this.fromSql} WHERE ${this.where(q, c)}`;
+    const [{ total }] = await db.$queryRaw<{ total: number }[]>`SELECT count(*)::int AS total ${this.fromSql} WHERE ${this.where(q, c, ['own'])}`;
 
     // Chip counts honour every filter except the chip itself (C-07).
     const chipRows = await db.$queryRaw<{ slug: string; n: number }[]>`
-      SELECT c.slug, count(*)::int AS n ${this.fromSql} WHERE ${this.where(q, c, ['chip'])} GROUP BY c.slug`;
+      SELECT c.slug, count(*)::int AS n ${this.fromSql} WHERE ${this.where(q, c, ['chip', 'own'])} GROUP BY c.slug`;
     const counts: Record<string, number> = { all: chipRows.reduce((s, r) => s + r.n, 0), for_you: 0 };
     for (const s of PUBLIC_CATEGORY_SLUGS) counts[s] = 0;
     for (const r of chipRows) {
@@ -145,11 +149,11 @@ export class WorkerService {
       if (c.interests.includes(r.slug)) counts.for_you! += r.n;
     }
     const facet = async (skip: Skip, col: Prisma.Sql) =>
-      db.$queryRaw<{ k: string; n: number }[]>`SELECT ${col} AS k, count(*)::int AS n ${this.fromSql} WHERE ${this.where(q, c, [skip])} GROUP BY 1`;
+      db.$queryRaw<{ k: string; n: number }[]>`SELECT ${col} AS k, count(*)::int AS n ${this.fromSql} WHERE ${this.where(q, c, [skip, 'own'])} GROUP BY 1`;
     const [catF, timeF, proofF] = await Promise.all([
       facet('category', Prisma.sql`c.slug`),
       facet('time', Prisma.sql`CASE WHEN j.est_minutes <= 5 THEN 'under_5' WHEN j.est_minutes <= 15 THEN '5_15' ELSE 'over_15' END`),
-      db.$queryRaw<{ k: string; n: number }[]>`SELECT p::text AS k, count(*)::int AS n ${this.fromSql} CROSS JOIN LATERAL unnest(j.proof_types) AS p WHERE ${this.where(q, c, ['proof'])} GROUP BY 1`,
+      db.$queryRaw<{ k: string; n: number }[]>`SELECT p::text AS k, count(*)::int AS n ${this.fromSql} CROSS JOIN LATERAL unnest(j.proof_types) AS p WHERE ${this.where(q, c, ['proof', 'own'])} GROUP BY 1`,
     ]);
     const toMap = (rows: { k: string; n: number }[]) => Object.fromEntries(rows.map((r) => [r.k, r.n]));
     const facets = { category: toMap(catF), time: toMap(timeF), proof: toMap(proofF) };
@@ -159,8 +163,8 @@ export class WorkerService {
     const applied = { chip: q.chip, category: q.category, reward_min: q.reward_min, reward_max: q.reward_max, time: q.time, proof: q.proof, only_open: q.only_open, hide_done: q.hide_done, sort: q.sort, q: q.q };
     if (q.count_only) return { data: [] as WorkerJobCard[], meta: { total, page: 1, per_page: perPage, total_pages: totalPages, has_more: false, counts, facets, applied_filters: applied } };
     const page = Math.min(q.page, totalPages);
-    const rows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
-      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(q, c)}
+    const rows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean; is_own: boolean })[]>`
+      SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(q, c, ['own'])}
       ORDER BY ${PIN_FIRST}, ${SORT_SQL[q.sort] ?? SORT_SQL.newest} LIMIT ${perPage} OFFSET ${(page - 1) * perPage}`;
     return {
       data: rows.map((r) => this.card(r, c, newMin)),
@@ -207,7 +211,7 @@ export class WorkerService {
 
     // Recommended: interests first, newest otherwise (FR-WJOB-003).
     const recQ: Partial<WorkerJobsQuery> = { chip: c.interests.length ? 'for_you' : 'all', only_open: true, hide_done: true };
-    const recRows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean })[]>`
+    const recRows = await db.$queryRaw<(JobRowRaw & { eligibility: string; min_approval_rate: number; done: boolean; in_progress: boolean; is_own: boolean })[]>`
       SELECT ${this.selectCols(c)} ${this.fromSql} WHERE ${this.where(recQ, c)} ORDER BY ${PIN_FIRST}, ${SORT_SQL.newest} LIMIT 5`;
     const categories = await db.category.findMany({ where: { slug: { in: c.interests } }, orderBy: { sortOrder: 'asc' }, select: { name: true } });
 
@@ -336,10 +340,12 @@ export class WorkerService {
     const live = reservation && reservation.expiresAt > now ? reservation : null;
     if (reservation && !live) await this.reservations.expireOne(reservation.id).catch(() => undefined);
 
-    // job_views (one row per viewer; counts first views only).
+    // job_views (one row per viewer; counts first views only). The poster's own views don't count.
     const viewerKey = `u:${userId}`;
-    const seen = await db.jobView.findUnique({ where: { jobId_viewerKey: { jobId: job.id, viewerKey } }, select: { id: true } });
-    if (seen) await db.jobView.update({ where: { id: seen.id }, data: { lastViewedAt: now, viewCount: { increment: 1 } } });
+    const seen = job.employerUserId === userId ? null : await db.jobView.findUnique({ where: { jobId_viewerKey: { jobId: job.id, viewerKey } }, select: { id: true } });
+    if (job.employerUserId === userId) {
+      // no view tracking
+    } else if (seen) await db.jobView.update({ where: { id: seen.id }, data: { lastViewedAt: now, viewCount: { increment: 1 } } });
     else {
       await db.jobView.create({ data: { jobId: job.id, viewerUserId: userId, viewerKey } }).catch(() => undefined);
       await db.job.update({ where: { id: job.id }, data: { countViews: { increment: 1 } } }).catch(() => undefined);

@@ -14,11 +14,12 @@ import { adminEnv } from '../core/admin-env';
 import { dateRange, dec, dhakaDateStr, iso, m2, m6, needReason, needText, paged, paging, startOfDhakaDay, toCsv, type Q } from '../core/helpers';
 import { MONEY_AUDIT_PREFIXES, MONEY_SETTING_KEYS, ROLE_LABEL } from '../core/permissions';
 import { hashAdminPassword } from '../auth/admin-auth.service';
+import { channelLabel } from '../../deposits/manual-channels';
 
 const ROLE_CODES = ['super_admin', 'ops_admin', 'finance_admin', 'moderator', 'support_agent', 'analyst'];
 const ROLE_DESC: Record<string, string> = {
   super_admin: 'Full access, including admin accounts and all settings.',
-  ops_admin: 'Users, KYC, employer verification, jobs, disputes, reports, content, broadcast, platform settings.',
+  ops_admin: 'Users, KYC, employer verification, jobs, disputes, reports, content, platform settings.',
   finance_admin: 'Deposits, withdrawals, ledger, reconciliation, FX, payout method configs, financial reports.',
   moderator: 'Job moderation, job reports, disputes, submission overrides, restrict accounts, referral review.',
   support_agent: 'Contact messages and read-only lookup with masked data.',
@@ -249,7 +250,19 @@ export class AdminOpsService {
       c.contactMessage.count({ where: { status: 'new', ...(financeOnly ? { topic: 'payments_withdrawals' } : {}) } }),
       c.ledgerAdjustmentRequest.count({ where: { status: 'pending_approval', expiresAt: { gt: now } } }),
     ]);
-    const queues = { kyc_pending: kycPending, kyc_overdue: kycOverdue, employer_verification: emp, withdrawals_requested: wdReq, withdrawals_processing: wdProc, disputes_open: dOpen, disputes_overdue: dOver, reports_open: rOpen, flagged_jobs: flagged, escalated_submissions: escalated, support_new: supportNew, adjustments_pending: adjPending, deposits_pending_approval: await c.adminPendingAction.count({ where: { objectType: 'deposit', status: 'pending' } }) };
+    // Deposits badge: submitted deposits waiting for an admin to check (manual bKash/Nagad/crypto refs) + approvals waiting on a second admin.
+    const [depPending, depApprovals, wdApprovals, appeals, reconOpen, referralsFlagged] = await Promise.all([
+      c.deposit.count({ where: { status: 'pending' } }),
+      c.adminPendingAction.count({ where: { objectType: 'deposit', status: 'pending' } }),
+      c.adminPendingAction.count({ where: { objectType: 'withdrawal', status: 'pending' } }),
+      // Users badge: restriction appeals waiting for a decision.
+      c.appeal.count({ where: { status: { in: ['open', 'under_review'] } } }),
+      // Ledger badge also counts unresolved critical/high reconciliation issues.
+      c.reconciliationItem.count({ where: { resolvedAt: null, severity: { in: ['critical', 'high'] } } }),
+      // Referrals badge: high-risk referrals (same threshold as the Flagged tab) not yet marked ineligible.
+      c.referral.count({ where: { riskScore: { gte: 30 }, status: { not: 'ineligible' } } }),
+    ]);
+    const queues = { kyc_pending: kycPending, kyc_overdue: kycOverdue, employer_verification: emp, withdrawals_requested: wdReq, withdrawals_processing: wdProc, disputes_open: dOpen, disputes_overdue: dOver, reports_open: rOpen, flagged_jobs: flagged, escalated_submissions: escalated, support_new: supportNew, adjustments_pending: adjPending, deposits_pending_approval: depPending + depApprovals, withdrawals_action: wdReq + wdApprovals, ledger_action: adjPending + reconOpen, appeals_open: appeals, referrals_flagged: referralsFlagged };
     const [dep, pay, appr, newUsers] = await Promise.all([
       c.deposit.aggregate({ where: { completedAt: { gte: today } }, _sum: { creditedAmountUsd: true } }),
       c.withdrawal.aggregate({ where: { paidAt: { gte: today }, status: 'paid' }, _sum: { amountUsd: true } }),
@@ -295,8 +308,11 @@ export class AdminOpsService {
     const alerts: { severity: string; code: string; message: string; link: string }[] = [];
     const finance = ctx.isSuper || ctx.roles.includes('finance_admin');
     const ops = ctx.isSuper || ctx.roles.includes('ops_admin');
-    if (finance && fxAge !== null && fxAge >= 36) alerts.push({ severity: 'critical', code: 'fx_stale', message: 'The BDT rate is out of date, so BDT withdrawals are blocked. Add a rate.', link: '/settings?tab=fx' });
-    else if (finance && fxAge !== null && fxAge >= 24) alerts.push({ severity: 'high', code: 'fx_stale_soon', message: `The BDT rate is ${fxAge} hours old. BDT withdrawals stop at 36 hours.`, link: '/settings?tab=fx' });
+    // Same rule as FxService.current: only auto-fetched rates expire. A manual rate never blocks withdrawals.
+    const autoFx = (await c.platformSetting.findUnique({ where: { key: 'fx_auto_fetch_enabled' } }))?.value === true;
+    const fxCanExpire = autoFx && fx?.source !== 'manual';
+    if (finance && fxCanExpire && fxAge !== null && fxAge >= 36) alerts.push({ severity: 'critical', code: 'fx_stale', message: 'The BDT rate is out of date, so BDT withdrawals are blocked. Add a rate.', link: '/settings?tab=fx' });
+    else if (finance && fxCanExpire && fxAge !== null && fxAge >= 24) alerts.push({ severity: 'high', code: 'fx_stale_soon', message: `The BDT rate is ${fxAge} hours old. BDT withdrawals stop at 36 hours.`, link: '/settings?tab=fx' });
     if (finance) {
       const crit = await c.reconciliationItem.count({ where: { resolvedAt: null, severity: 'critical' } });
       if (crit) alerts.push({ severity: 'critical', code: 'recon_critical', message: "A critical reconciliation check failed. Payouts should stop until it's reviewed.", link: '/ledger?tab=reconciliation' });
@@ -335,6 +351,99 @@ export class AdminOpsService {
     const k = (n: string) => m2(kinds.find((x) => x.kind === n)?._sum.balanceCached);
     const rc = (s: string) => recon.find((x) => x.severity === s)?._count._all ?? 0;
     return { date, summary: { deposits_usd: m2(dep._sum.creditedAmountUsd), payouts_usd: m2(pay._sum.amountUsd), customer_funds: { worker_earnings_usd: k('worker_earnings'), employer_available_usd: k('employer_available'), employer_reserved_usd: k('employer_reserved'), in_flight_usd: m2(inflight._sum.amountUsd), negative_balances_usd: dec(neg._sum.balanceCached).abs().toFixed(2) }, open_reconciliation_items: { critical: rc('critical'), high: rc('high'), medium: rc('medium') } }, reports: FINANCIAL_REPORTS };
+  }
+
+  /**
+   * Reports → Summary for a period (Dhaka days): money in and out with the previous period for
+   * comparison, a daily trend, revenue and costs from the ledger, splits by method, and what is
+   * waiting. Customer funds and reconciliation are point-in-time (now).
+   */
+  async financialOverview(q: Q) {
+    const days = [1, 7, 30, 90].includes(Number(q.days)) ? Number(q.days) : 30;
+    const now = new Date();
+    const from = startOfDhakaDay(now, days - 1);
+    const prevFrom = new Date(from.getTime() - days * 86_400_000);
+    const db = this.db;
+    const sum = (v: Prisma.Decimal | null | undefined) => dec(v);
+    const moneyIn = (a: Date, b: Date) => db.deposit.aggregate({ where: { completedAt: { gte: a, lt: b } }, _sum: { creditedAmountUsd: true }, _count: { _all: true } });
+    const moneyOut = (a: Date, b: Date) => db.withdrawal.aggregate({ where: { status: 'paid', paidAt: { gte: a, lt: b } }, _sum: { amountUsd: true }, _count: { _all: true } });
+    const ledgerByKind = (a: Date, b: Date) =>
+      db.$queryRaw<{ kind: string; total: Prisma.Decimal }[]>`
+        SELECT a.kind::text AS kind, COALESCE(sum(e.amount),0) AS total FROM ledger_entries e JOIN wallet_accounts a ON a.id = e.account_id
+        WHERE a.kind IN ('platform_revenue','referral_expense','gateway_fees') AND e.created_at >= ${a} AND e.created_at < ${b} GROUP BY 1`;
+    const [dep, depPrev, pay, payPrev, led, ledPrev, refunds, depDays, payDays, revDays, depBy, payBy, pendingDep, wReq, wProc] = await Promise.all([
+      moneyIn(from, now),
+      moneyIn(prevFrom, from),
+      moneyOut(from, now),
+      moneyOut(prevFrom, from),
+      ledgerByKind(from, now),
+      ledgerByKind(prevFrom, from),
+      db.deposit.aggregate({ where: { refundedAt: { gte: from, lt: now } }, _sum: { refundedAmountUsd: true } }).catch(() => ({ _sum: { refundedAmountUsd: null } })),
+      db.$queryRaw<{ day: string; n: Prisma.Decimal }[]>`SELECT to_char(completed_at AT TIME ZONE 'Asia/Dhaka','YYYY-MM-DD') AS day, COALESCE(sum(credited_amount_usd),0) AS n FROM deposits WHERE completed_at >= ${startOfDhakaDay(now, Math.max(days, 7) - 1)} GROUP BY 1`,
+      db.$queryRaw<{ day: string; n: Prisma.Decimal }[]>`SELECT to_char(paid_at AT TIME ZONE 'Asia/Dhaka','YYYY-MM-DD') AS day, COALESCE(sum(amount_usd),0) AS n FROM withdrawals WHERE status = 'paid' AND paid_at >= ${startOfDhakaDay(now, Math.max(days, 7) - 1)} GROUP BY 1`,
+      db.$queryRaw<{ day: string; n: Prisma.Decimal }[]>`SELECT to_char(e.created_at AT TIME ZONE 'Asia/Dhaka','YYYY-MM-DD') AS day, COALESCE(sum(e.amount),0) AS n FROM ledger_entries e JOIN wallet_accounts a ON a.id = e.account_id WHERE a.kind = 'platform_revenue' AND e.created_at >= ${startOfDhakaDay(now, Math.max(days, 7) - 1)} GROUP BY 1`,
+      db.deposit.groupBy({ by: ['method', 'providerAsset'], where: { completedAt: { gte: from, lt: now } }, _sum: { creditedAmountUsd: true }, _count: { _all: true } }),
+      db.withdrawal.groupBy({ by: ['method'], where: { status: 'paid', paidAt: { gte: from, lt: now } }, _sum: { amountUsd: true }, _count: { _all: true } }),
+      db.deposit.aggregate({ where: { status: 'pending' }, _sum: { amountUsd: true }, _count: { _all: true } }),
+      db.withdrawal.aggregate({ where: { status: 'requested' }, _sum: { amountUsd: true }, _count: { _all: true } }),
+      db.withdrawal.aggregate({ where: { status: 'processing' }, _sum: { amountUsd: true }, _count: { _all: true } }),
+    ]);
+    const kind = (rows: { kind: string; total: Prisma.Decimal }[], k: string) => dec(rows.find((r) => r.kind === k)?.total);
+    // Revenue is credited (+); referral commissions and gateway fees are debited (−), shown as positive costs.
+    const pl = (rows: { kind: string; total: Prisma.Decimal }[]) => {
+      const revenue = kind(rows, 'platform_revenue');
+      const referral = kind(rows, 'referral_expense').abs();
+      const fees = kind(rows, 'gateway_fees').abs();
+      return { revenue, referral, fees, net: revenue.minus(referral).minus(fees) };
+    };
+    const cur = pl(led);
+    const prev = pl(ledPrev);
+    const change = (a: Decimal, b: Decimal) => (b.isZero() ? null : a.minus(b).div(b.abs()).mul(100).toDecimalPlaces(1).toNumber());
+    // The trend shows at least a week, so "Today" still has a line to read.
+    const trendDays = Math.max(days, 7);
+    const trendFrom = startOfDhakaDay(now, trendDays - 1);
+    const labels = [...Array(trendDays)].map((_, i) => dhakaDateStr(new Date(trendFrom.getTime() + i * 86_400_000 + 3_600_000)));
+    const series = (rows: { day: string; n: Prisma.Decimal }[]) => labels.map((d) => dec(rows.find((r) => r.day === d)?.n).toDecimalPlaces(2).toNumber());
+    const depIn = sum(dep._sum.creditedAmountUsd);
+    const payOut = sum(pay._sum.amountUsd);
+    const W_LABEL: Record<string, string> = { bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket', usdt_trc20: 'USDT (TRC20)' };
+    const depMap = new Map<string, { label: string; count: number; usd: Decimal }>();
+    for (const r of depBy) {
+      const label = channelLabel(r.providerAsset) ?? (r.method === 'card' ? 'Card' : r.method === 'crypto' ? 'USDT' : 'bKash');
+      const g = depMap.get(label) ?? { label, count: 0, usd: new Decimal(0) };
+      g.count += r._count._all;
+      g.usd = g.usd.plus(dec(r._sum.creditedAmountUsd));
+      depMap.set(label, g);
+    }
+    const share = (rows: { label: string; count: number; usd: Decimal }[]) => rows.sort((a, b) => b.usd.comparedTo(a.usd)).map((r) => ({ label: r.label, count: r.count, usd: m2(r.usd) }));
+    return {
+      period: { days, from: dhakaDateStr(from), to: dhakaDateStr(now), previous_from: dhakaDateStr(prevFrom), timezone: 'Asia/Dhaka', generated_at: iso(now) },
+      totals: {
+        deposits_usd: m2(depIn),
+        deposits_count: dep._count._all,
+        deposits_change_pct: change(depIn, sum(depPrev._sum.creditedAmountUsd)),
+        payouts_usd: m2(payOut),
+        payouts_count: pay._count._all,
+        payouts_change_pct: change(payOut, sum(payPrev._sum.amountUsd)),
+        net_flow_usd: m2(depIn.minus(payOut)),
+        revenue_usd: m2(cur.revenue),
+        revenue_change_pct: change(cur.revenue, prev.revenue),
+        referral_expense_usd: m2(cur.referral),
+        provider_fees_usd: m2(cur.fees),
+        net_revenue_usd: m2(cur.net),
+        refunds_usd: m2(sum(refunds._sum.refundedAmountUsd)),
+      },
+      trend: { days: labels, deposits_usd: series(depDays), payouts_usd: series(payDays), revenue_usd: series(revDays) },
+      by_method: {
+        deposits: share([...depMap.values()]),
+        withdrawals: share(payBy.map((r) => ({ label: W_LABEL[r.method] ?? r.method, count: r._count._all, usd: dec(r._sum.amountUsd) }))),
+      },
+      waiting: {
+        deposits_pending: { count: pendingDep._count._all, usd: m2(sum(pendingDep._sum.amountUsd)) },
+        withdrawals_requested: { count: wReq._count._all, usd: m2(sum(wReq._sum.amountUsd)) },
+        withdrawals_processing: { count: wProc._count._all, usd: m2(sum(wProc._sum.amountUsd)) },
+      },
+    };
   }
 
   /** Builds one report (Doc 09 §12). Values at 6 dp; withdrawals keep accounts masked. */
@@ -589,8 +698,9 @@ export class AdminOpsController {
 
   @Get('reports/financial')
   @Perms('reports.financial')
-  summary(@Query() q: Q) {
-    return this.svc.financialSummary(q);
+  async summary(@Query() q: Q) {
+    const [today, overview] = await Promise.all([this.svc.financialSummary(q), this.svc.financialOverview(q)]);
+    return { ...today, overview };
   }
 
   @Get('reports/financial/:report')

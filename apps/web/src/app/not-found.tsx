@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { Footer, Navbar } from '@24f/ui';
+import { Footer } from '@24f/ui';
+import { PublicNavbar } from '@/components/public/PublicNavbar';
 import { ErrorScreen } from '@/components/public/ErrorScreen';
 
 export const metadata: Metadata = { title: 'Page not found', robots: { index: false } };
@@ -8,7 +9,7 @@ export const metadata: Metadata = { title: 'Page not found', robots: { index: fa
 export default function NotFound() {
   return (
     <>
-      <Navbar />
+      <PublicNavbar />
       <main id="main">
         <ErrorScreen
           code="404"

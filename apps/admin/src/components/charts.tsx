@@ -4,7 +4,7 @@ import NextLink from 'next/link';
 import { CountUp, cn, gsap, useGSAP, MOTION_OK } from '@24f/ui';
 
 /** KPI card with GSAP count-up (Doc 02 §5.26 look; Doc 09 SCR-ADM-02). */
-export function Kpi({ label, value, display, sub, href, tone, money }: { label: string; value: number; display?: string; sub?: React.ReactNode; href?: string; tone?: 'danger' | 'success'; money?: boolean }) {
+export function Kpi({ label, value, display, sub, href, replace, tone, money }: { label: string; value: number; display?: string; sub?: React.ReactNode; href?: string; /** Swap the URL in place (a filter), without a history entry or a scroll. */ replace?: boolean; tone?: 'danger' | 'success'; money?: boolean }) {
   const fmt = (n: number) => (money ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : Math.round(n).toLocaleString('en-US'));
   const body = (
     <>
@@ -17,7 +17,7 @@ export function Kpi({ label, value, display, sub, href, tone, money }: { label: 
   );
   const cls = 'flex min-h-[128px] flex-col rounded-card border border-line bg-surface p-5 shadow-xs';
   return href ? (
-    <NextLink href={href} className={cn(cls, 'transition-shadow hover:border-line-strong hover:shadow-sm focus-visible:shadow-focus')} data-reveal-item>
+    <NextLink href={href} replace={replace} scroll={replace ? false : undefined} className={cn(cls, 'transition-shadow hover:border-line-strong hover:shadow-sm focus-visible:shadow-focus')} data-reveal-item>
       {body}
     </NextLink>
   ) : (
@@ -55,6 +55,8 @@ export function TrendChart({ series, labels, title, money }: { series: { name: s
     { dependencies: [JSON.stringify(series)], scope: ref },
   );
   const ticks = [0, 0.5, 1].map((f) => max * f);
+  // About eight date labels whatever the range, counted back from today so the last day always shows.
+  const labelStep = Math.max(1, Math.ceil(labels.length / 8));
   const fmt = (n: number) => (money ? `$${n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0)}` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
   return (
     <figure className="rounded-card border border-line bg-surface p-5 shadow-xs">
@@ -76,7 +78,7 @@ export function TrendChart({ series, labels, title, money }: { series: { name: s
             <text x={pad.l - 6} y={y(t) + 4} textAnchor="end" fontSize="10" fill="var(--fl-text-tertiary)">{fmt(t)}</text>
           </g>
         ))}
-        {labels.map((l, i) => (i % 2 === 0 || i === labels.length - 1 ? <text key={l} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--fl-text-tertiary)">{l.slice(5)}</text> : null))}
+        {labels.map((l, i) => ((labels.length - 1 - i) % labelStep === 0 ? <text key={l} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--fl-text-tertiary)">{l.slice(5)}</text> : null))}
         {series.map((s, si) => {
           const line = s.values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
           const area = `${line} L${x(s.values.length - 1)},${y(0)} L${x(0)},${y(0)} Z`;

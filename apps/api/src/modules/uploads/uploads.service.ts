@@ -66,6 +66,15 @@ export class UploadsService {
     return `${this.apiBase()}/uploads/${id}/file?v=${variant}&exp=${exp}&sig=${this.storage.sign('GET', id, variant, exp)}`;
   }
 
+  /**
+   * Signed GET for a KYC image (admin KYC review only). Uses its own `kyc` variant, so a normal
+   * `full`/`thumb` signature can never open a KYC file and this one opens nothing else.
+   */
+  kycSignedUrl(id: string) {
+    const exp = Math.floor(Date.now() / 1000) + getEnv().UPLOAD_PRESIGN_GET_TTL_SECONDS;
+    return `${this.apiBase()}/uploads/${id}/file?v=kyc&exp=${exp}&sig=${this.storage.sign('GET', id, 'kyc', exp)}`;
+  }
+
   // ---------------------------------------------------------------------------
   // Presign, PUT, complete
   // ---------------------------------------------------------------------------
@@ -196,6 +205,24 @@ export class UploadsService {
     });
   }
 
+  /**
+   * Removes a stored file from storage (the file and its `.thumb.webp`) and marks the row deleted.
+   * The row stays so records that point at it (KYC checks, proofs, disputes) keep their history.
+   */
+  async purge(u: UploadRow) {
+    let key: string | null = null;
+    try {
+      key = this.keyOf(u);
+    } catch {
+      key = null;
+    }
+    if (key) {
+      await this.storage.delete(u.storageBucket, key).catch(() => undefined);
+      await this.storage.delete(u.storageBucket, `${key}.thumb.webp`).catch(() => undefined);
+    }
+    await this.prisma.db.upload.update({ where: { id: u.id }, data: { status: 'deleted', deletedAt: new Date() } });
+  }
+
   private async quarantine(u: UploadRow, reason: 'type_mismatch' | 'malware' | 'too_large' | 'decode_failed') {
     await this.storage.delete(u.storageBucket, this.keyOf(u)).catch(() => undefined);
     await this.prisma.db.upload.update({ where: { id: u.id }, data: { status: 'quarantined' } });
@@ -251,10 +278,11 @@ export class UploadsService {
 
   /** Signed file download (`GET /uploads/{id}/file`). Office files download as attachments (UP-5). */
   async readSigned(id: string, variant: string, exp: number, sig: string) {
-    if (variant !== 'full' && variant !== 'thumb') throw new ApiError('NOT_FOUND');
+    if (variant !== 'full' && variant !== 'thumb' && variant !== 'kyc') throw new ApiError('NOT_FOUND');
     if (!this.storage.verify('GET', id, variant, exp, sig)) throw new ApiError('FORBIDDEN');
     const u = await this.prisma.db.upload.findUnique({ where: { id } });
-    if (!u || u.status !== 'uploaded' || KYC.has(u.purpose)) throw new ApiError('NOT_FOUND');
+    // KYC files open only with a `kyc` signature (minted by admin KYC review); `kyc` opens only KYC files.
+    if (!u || u.status !== 'uploaded' || KYC.has(u.purpose) !== (variant === 'kyc')) throw new ApiError('NOT_FOUND');
     const key = this.keyOf(u);
     const data = await this.storage.get(u.storageBucket, variant === 'thumb' ? `${key}.thumb.webp` : key).catch(() => null);
     if (!data) throw new ApiError('NOT_FOUND');
@@ -263,6 +291,7 @@ export class UploadsService {
       data,
       contentType: variant === 'thumb' ? 'image/webp' : u.mimeType,
       disposition: `${inline ? 'inline' : 'attachment'}; filename="${u.originalFilename.replace(/["\r\n]/g, '')}"`,
+      sensitive: variant === 'kyc',
     };
   }
 

@@ -83,7 +83,7 @@ export function RequireSession({ children }: { children: (me: Me) => React.React
 }
 
 /** Where a signed-in user opening /login or /signup belongs: `next`, onboarding, or their overview. */
-function signedInDestination(m: Me, next: string | null) {
+export function signedInDestination(m: Me, next: string | null = null) {
   const nextPath = m.onboarding_completed_at ? (m.active_mode === 'employer' ? '/employer' : '/worker') : '/onboarding/role';
   return postAuthPath({ next_path: nextPath, active_mode: m.active_mode }, next);
 }

@@ -4,7 +4,6 @@ import { Alert, Button, EmptyState, StatusTracker, Tabs, Tooltip, toast } from '
 import { usePageHeader } from '@/components/shell';
 import { ActionDialog, Copy, FilterSelect, Gate, KV, Pager, post, RefLink, SidePanel, SplitView, Table, Toolbar, type ActionSpec } from '@/components/kit';
 import { AdminBadge, LABELS } from '@/components/badges';
-import { Kpi } from '@/components/charts';
 import { PendingCard, type Pending } from '@/components/pending';
 import { api, download, newIdemKey } from '@/lib/api';
 import { reportError, useApi, useUrlState } from '@/lib/hooks';
@@ -159,14 +158,11 @@ function Withdrawals() {
 
   return (
     <Gate perms={['withdrawals.read_masked', 'withdrawals.read']}>
-      <div className="mb-5 grid gap-4 tablet:grid-cols-3 desktop:grid-cols-5">
-        <Kpi label="Requested" value={counts.requested ?? 0} sub=" " />
-        <Kpi label="Processing" value={counts.processing ?? 0} sub=" " />
-        <Kpi label="On hold" value={counts.held ?? 0} sub=" " />
-        <Kpi label="Awaiting approval" value={counts.pending_approval ?? 0} sub=" " />
-        <Kpi label="Oldest waiting" value={0} display={list.meta?.oldest_requested_at ? rel(String(list.meta.oldest_requested_at)) : '—'} sub=" " />
-      </div>
-      <Tabs label="Withdrawal views" value={tab} panelId="wd" className="mb-4" onChange={(v) => u.set({ tab: v, ref: null, status: null })} tabs={TABS.filter((x) => (x.value === 'batches' || x.value === 'approval' ? can('withdrawals.write', 'withdrawals.approve') : true)).map((x) => ({ value: x.value, label: x.label }))} />
+      <Tabs label="Withdrawal views" value={tab} panelId="wd" className="mb-4" onChange={(v) => u.set({ tab: v, ref: null, status: null })} tabs={TABS.filter((x) => (x.value === 'batches' || x.value === 'approval' ? can('withdrawals.write', 'withdrawals.approve') : true)).map((x) => {
+        // Queue sizes sit on their tabs (shown only when something is waiting).
+        const n = x.value === 'hold' ? counts.held : x.value === 'processing' ? counts.processing : x.value === 'approval' ? counts.pending_approval : undefined;
+        return { value: x.value, label: x.label, count: n ? n : undefined };
+      })} />
       {checksum ? <Alert tone="success" className="mb-4" title="Batch file saved">SHA-256 {checksum} <Copy value={checksum} /></Alert> : null}
       {tab === 'batches' ? (
         <>
@@ -248,6 +244,7 @@ function Withdrawals() {
             <FilterSelect label="Method" value={u.get('method')} onChange={(v) => u.set({ method: v })} options={[{ value: '', label: 'Any method' }, ...Object.entries(LABELS.method).map(([value, label]) => ({ value, label }))]} />
             {tab === 'all' ? <FilterSelect label="Status" value={u.get('status')} onChange={(v) => u.set({ status: v })} options={[{ value: '', label: 'Any status' }, ...['requested', 'processing', 'paid', 'rejected', 'cancelled', 'failed'].map((s) => ({ value: s, label: s[0]!.toUpperCase() + s.slice(1) }))]} /> : null}
             {u.get('batch') ? <Button size="S" variant="secondary" trailingIcon="x" onClick={() => u.set({ batch: null })}>Batch filter</Button> : null}
+            {list.meta?.oldest_requested_at && (tab === 'ready' || tab === 'hold') ? <span className="self-center text-body-xs text-fg-tertiary">Oldest request {rel(String(list.meta.oldest_requested_at))}</span> : null}
           </Toolbar>
           <Table<Row>
             caption="Withdrawals"

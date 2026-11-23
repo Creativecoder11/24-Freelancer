@@ -31,6 +31,7 @@ export * from './forms/RangeSlider';
 export * from './forms/Search';
 export * from './forms/SegmentedControl';
 export * from './forms/Select';
+export * from './forms/MultiSelect';
 export * from './forms/SelectableCard';
 export * from './forms/Switch';
 export * from './forms/Textarea';

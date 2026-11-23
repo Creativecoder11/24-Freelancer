@@ -14,6 +14,8 @@ export interface JobRowData {
   slotsTotal: number;
   rewardLabel: string;
   isNew?: boolean;
+  /** The viewer posted this job. */
+  isOwn?: boolean;
   /** Pin running: shown as "Pinned" (listed above every other job). */
   isPinned?: boolean;
   /** Employer bought Top: shown as "Top job". */
@@ -49,6 +51,7 @@ export function JobRow({ job, href, ctaLabel = 'View', className }: JobRowProps)
             {job.isPinned ? <StatusBadge tone="brand" label="Pinned" className="shrink-0" /> : null}
             {job.isTopped && !job.isPinned ? <StatusBadge tone="success" label="Top job" className="shrink-0" /> : null}
             {job.isNew ? <StatusBadge tone="brand" label="New" className="shrink-0" /> : null}
+            {job.isOwn ? <StatusBadge tone="neutral" label="Your job" className="shrink-0" /> : null}
           </div>
           <p className="mt-0.5 truncate text-body-xs text-fg-tertiary">
             {job.category} · {job.employer} · {job.ageLabel}

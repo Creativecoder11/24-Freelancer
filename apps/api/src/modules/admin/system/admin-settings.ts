@@ -10,9 +10,10 @@ import { Admin, Perms, type AdminCtx } from '../core/admin-context';
 import { AdminSessionService } from '../core/admin-session.service';
 import { AuditService } from '../core/audit.service';
 import { adminEnv } from '../core/admin-env';
-import { dec, iso, m2, needEnum, needReason, needText, paged, paging, type Q } from '../core/helpers';
+import { dec, iso, m2, needEnum, needReason, needText, optText, paged, paging, type Q } from '../core/helpers';
 import { MONEY_SETTING_KEYS } from '../core/permissions';
 import { GROUP_LABEL, GROUP_ORDER, SETTING_RULES, validateSetting } from './setting-rules';
+import { ACCOUNT_TYPES, CHANNELS, MANUAL_CHANNELS, accountTypeOf } from '../../deposits/manual-channels';
 
 const METHODS = ['bkash', 'nagad', 'rocket', 'usdt_trc20'] as const;
 const FX_MAX_AGE = Number(process.env.FX_MAX_AGE_HOURS ?? 36);
@@ -106,6 +107,123 @@ export class AdminSettingsService {
     return { key, value: upd.value, updated_at: iso(upd.updatedAt), applies_to: rule?.applies ?? 'Immediately' };
   }
 
+  // ------------------------------------------------------------------ deposit methods
+
+  /** Setting keys behind one manual deposit rail. */
+  private depositKeys(channel: (typeof MANUAL_CHANNELS)[number]) {
+    const d = CHANNELS[channel];
+    return [d.enabledKey, d.accountKey, d.instructionsKey, ...(d.accountTypeKey ? [d.accountTypeKey] : [])];
+  }
+
+  /** Manual deposit rails with their switch, receiving account and why one is hidden on Add funds. */
+  async depositMethods(ctx: AdminCtx) {
+    const keys = [...MANUAL_CHANNELS.flatMap((c) => this.depositKeys(c)), 'deposit_methods_enabled'];
+    const rows = await this.db.platformSetting.findMany({ where: { key: { in: keys } }, include: { updatedByAdmin: { select: { fullName: true } } } });
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    const groupsRow = byKey.get('deposit_methods_enabled')?.value;
+    const groups = Array.isArray(groupsRow) ? (groupsRow as unknown[]).map(String) : ['mobile_wallet', 'crypto'];
+    const rate = await this.db.exchangeRate.findFirst({ where: { quoteCurrency: 'BDT', direction: 'deposit', effectiveFrom: { lte: new Date() } }, orderBy: { effectiveFrom: 'desc' } });
+    const str = (k: string | undefined, fallback = '') => {
+      const v = k ? byKey.get(k)?.value : undefined;
+      return typeof v === 'string' ? v : fallback;
+    };
+    const data = MANUAL_CHANNELS.map((channel, i) => {
+      const d = CHANNELS[channel];
+      const enabledRow = byKey.get(d.enabledKey)?.value;
+      const enabled = typeof enabledRow === 'boolean' ? enabledRow : true;
+      const account = str(d.accountKey, byKey.has(d.accountKey) ? '' : d.accountDefault).trim();
+      const groupOn = groups.includes(d.group);
+      const hasRate = d.currency !== 'BDT' || !!rate;
+      const hidden_reason = !enabled
+        ? 'Switched off.'
+        : !account
+          ? 'No receiving account set.'
+          : !groupOn
+            ? `${d.group === 'crypto' ? 'Crypto' : 'Mobile wallet'} deposits are off (Platform → Deposits).`
+            : !hasRate
+              ? 'No BDT deposit rate (Settings → Exchange rate).'
+              : null;
+      const latest = this.depositKeys(channel)
+        .map((k) => byKey.get(k))
+        .filter((r): r is NonNullable<typeof r> => !!r)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+      return {
+        channel,
+        label: d.label,
+        subtitle: d.subtitle,
+        group: d.group,
+        currency: d.currency === 'USD' ? 'USDT' : 'BDT',
+        enabled,
+        shown: !hidden_reason,
+        hidden_reason,
+        account,
+        account_label: d.accountLabel,
+        account_type: d.accountTypeKey ? accountTypeOf(str(d.accountTypeKey, 'Personal number')) : null,
+        instructions: str(d.instructionsKey).trim(),
+        default_instructions: d.instructions,
+        sort_order: i,
+        updated_by: latest?.updatedByAdmin?.fullName ?? null,
+        updated_at: latest ? iso(latest.updatedAt) : null,
+      };
+    });
+    return paged(data, data.length, { page: 1, perPage: data.length }, { editable: this.canWrite(ctx) });
+  }
+
+  async updateDepositMethod(ctx: AdminCtx, method: string, b: Record<string, unknown>) {
+    const channel = needEnum(method, MANUAL_CHANNELS, 'channel');
+    const d = CHANNELS[channel];
+    // Reason is optional here; it still goes to the audit log when given.
+    const reason = optText(b.reason, 500, 'reason');
+    const rows = await this.db.platformSetting.findMany({ where: { key: { in: this.depositKeys(channel) } } });
+    const cur = new Map(rows.map((r) => [r.key, r.value]));
+    const fields: Record<string, string[]> = {};
+    const text = (v: unknown, max: number, field: string) => {
+      const t = typeof v === 'string' ? v.trim() : '';
+      if (t.length > max) fields[field] = [`Keep it to ${max} characters or fewer.`];
+      return t;
+    };
+    const next = new Map<string, { value: boolean | string; type: 'boolean' | 'string'; description: string }>();
+    if (b.account !== undefined) {
+      const account = text(b.account, 64, 'account');
+      if (account && !d.accountPattern.test(account)) fields.account = [d.accountError];
+      next.set(d.accountKey, { value: account, type: 'string', description: `${d.accountLabel} that receives manual deposits. Empty hides ${d.label}.` });
+    }
+    if (b.account_type !== undefined && d.accountTypeKey) {
+      const type = typeof b.account_type === 'string' ? b.account_type.trim() : '';
+      if (!(ACCOUNT_TYPES as readonly string[]).includes(type)) fields.account_type = ['Choose Personal number or Merchant number.'];
+      next.set(d.accountTypeKey, { value: type, type: 'string', description: `${d.label} account type (Personal number / Merchant number).` });
+    }
+    if (b.instructions !== undefined) {
+      next.set(d.instructionsKey, { value: text(b.instructions, 500, 'instructions'), type: 'string', description: `Instructions shown on Add funds for ${d.label}. Empty uses the default text.` });
+    }
+    if (b.enabled !== undefined) next.set(d.enabledKey, { value: b.enabled === true, type: 'boolean', description: `Enable manual ${d.label} deposits.` });
+    // An empty account is allowed: the method just stays hidden on Add funds until one is set.
+    const enabled = next.has(d.enabledKey) ? next.get(d.enabledKey)!.value === true : cur.get(d.enabledKey) !== false;
+    const accountNow = next.has(d.accountKey) ? String(next.get(d.accountKey)!.value) : String(cur.get(d.accountKey) ?? (cur.has(d.accountKey) ? '' : d.accountDefault)).trim();
+    if (Object.keys(fields).length) throw new ApiError('VALIDATION_FAILED', undefined, fields);
+
+    const changed = [...next].filter(([k, v]) => cur.get(k) !== v.value);
+    if (changed.length) {
+      await this.db.$transaction(async (tx) => {
+        for (const [key, v] of changed) {
+          await tx.platformSetting.upsert({
+            where: { key },
+            update: { value: v.value, updatedByAdminId: ctx.id, updatedAt: new Date() },
+            create: { key, value: v.value, valueType: v.type, description: v.description, sourceRef: 'Admin', isPublic: true, updatedByAdminId: ctx.id },
+          });
+        }
+        await this.audit.record(
+          ctx,
+          { action: 'deposit_method.update', entityType: 'deposit_method', entityRef: channel, reason, before: Object.fromEntries(changed.map(([k]) => [k, cur.get(k) ?? null])), after: Object.fromEntries(changed.map(([k, v]) => [k, v.value])) },
+          tx,
+        );
+      });
+      this.settings.invalidate();
+      for (const [key] of changed) await this.redis.client.publish('settings:changed', key).catch(() => undefined);
+    }
+    return { channel, enabled, account: accountNow, changed: changed.map(([k]) => k) };
+  }
+
   // ------------------------------------------------------------------ payout methods
 
   async payoutMethods() {
@@ -143,7 +261,8 @@ export class AdminSettingsService {
 
   async updatePayoutMethod(ctx: AdminCtx, method: string, b: Record<string, unknown>) {
     const m = needEnum(method, METHODS, 'method');
-    const reason = needReason(b.reason);
+    // Reason is optional here; it still goes to the audit log when given.
+    const reason = optText(b.reason, 500, 'reason');
     await this.reauthFresh(ctx);
     const c = await this.db.payoutMethodConfig.findUniqueOrThrow({ where: { methodType: m } });
     const num = (k: string, cur: Prisma.Decimal) => (b[k] === undefined ? dec(cur) : new Decimal(String(b[k])));
@@ -251,6 +370,18 @@ export class AdminSettingsController {
   @Perms('settings.read')
   list(@Admin() ctx: AdminCtx, @Query() q: Q) {
     return this.svc.list(ctx, q);
+  }
+
+  @Get('deposit-methods')
+  @Perms('settings.read')
+  depositMethods(@Admin() ctx: AdminCtx) {
+    return this.svc.depositMethods(ctx);
+  }
+
+  @Patch('deposit-methods/:channel')
+  @Perms('settings.write')
+  updateDepositMethod(@Admin() ctx: AdminCtx, @Param('channel') c: string, @Body() b: Record<string, unknown>) {
+    return this.svc.updateDepositMethod(ctx, c, b ?? {});
   }
 
   @Get('payout-methods')

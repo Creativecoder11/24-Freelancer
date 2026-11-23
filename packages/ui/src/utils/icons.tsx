@@ -3,7 +3,7 @@ import {
   Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleAlert, CircleCheck, CircleHelp, CirclePlus,
   CircleX, Clipboard, Clock, Coins, Copy, CreditCard, Download, Ellipsis, ExternalLink, Eye, EyeOff, FileText, Flag,
   Gift, Globe, GripVertical, Image, Inbox, Info, Keyboard, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Link,
-  ListChecks, LoaderCircle, Lock, LogOut, Mail, MapPin, Megaphone, Menu, MessageSquare, Minus, Monitor, Pause,
+  ListChecks, LoaderCircle, Lock, LogOut, Mail, MapPin, Maximize2, Megaphone, Menu, MessageSquare, Minus, Monitor, Pause,
   PenLine, Percent, Phone, Play, Plus, RefreshCw, RotateCcw, Search, Send, Settings, Share2, ShieldCheck,
   SlidersHorizontal, Sparkle, SquarePen, Star, Tag, Target, ThumbsUp, Trash2, TrendingDown, TrendingUp, TriangleAlert,
   Upload, User, Users, Wallet, X, Zap, type LucideIcon,
@@ -26,7 +26,7 @@ export const ICONS = {
   help: CircleHelp, 'map-pin': MapPin, tag: Tag, monitor: Monitor, keyboard: Keyboard, clipboard: Clipboard,
   megaphone: Megaphone, pen: PenLine, percent: Percent, loader: LoaderCircle, grid: LayoutGrid, send: Send,
   rotate: RotateCcw, coins: Coins, building: Building2, sparkle: Sparkle, 'thumbs-up': ThumbsUp,
-  'grip-vertical': GripVertical, minus: Minus, circle: Circle,
+  'grip-vertical': GripVertical, minus: Minus, circle: Circle, maximize: Maximize2,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

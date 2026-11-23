@@ -38,7 +38,7 @@ export const ALL_KEYS = [
   'ledger.read', 'ledger.read_aggregate', 'ledger.adjust', 'ledger.approve',
   'recon.read', 'recon.write',
   'referrals.read', 'referrals.read_aggregate', 'referrals.review', 'referrals.reverse',
-  'support.reply', 'content.write', 'broadcast.send',
+  'support.reply', 'content.write',
   'settings.read', 'settings.write', 'payout_configs.read', 'payout_configs.write', 'fx.write',
   'admins.manage', 'audit.read', 'audit.export', 'reports.financial', 'reports.operational',
 ] as const;

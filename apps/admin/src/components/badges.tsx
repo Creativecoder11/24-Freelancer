@@ -21,7 +21,7 @@ export const ADMIN_BADGES: Record<string, Map> = {
   admin: { active: ['Active', 'success'], disabled: ['Disabled', 'neutral'] },
   adjustment: { pending_approval: ['Awaiting approval', 'warning'], approved: ['Posted', 'success'], declined: ['Declined', 'neutral'], expired: ['Expired', 'neutral'] },
   severity: { critical: ['Critical', 'danger'], high: ['High', 'danger'], medium: ['Medium', 'warning'], info: ['Info', 'info'] },
-  run: { ok: ['OK', 'success'], issues: ['Issues', 'warning'], running: ['Running', 'info'], failed: ['Failed', 'danger'] },
+  run: { ok: ['Passed', 'success'], passed: ['Passed', 'success'], issues: ['Issues', 'warning'], running: ['Running', 'info'], failed: ['Failed', 'danger'] },
 };
 
 export function AdminBadge({ kind, code, className }: { kind: keyof typeof ADMIN_BADGES; code: string | null | undefined; className?: string }) {
@@ -72,6 +72,25 @@ export const LABELS = {
   account: { worker_earnings: 'Available to withdraw', employer_available: 'Available for new jobs', employer_reserved: 'Reserved for running jobs' } as Record<string, string>,
   ledgerType: { deposit: 'Deposit', job_reserve: 'Job reserve', job_spend: 'Job spend', job_release: 'Job release', task_reward: 'Task reward', referral_commission: 'Referral commission', withdrawal: 'Withdrawal', withdrawal_reversal: 'Refunded', platform_fee: 'Platform fee', deposit_refund: 'Deposit refund', adjustment: 'Adjustment' } as Record<string, string>,
 };
+
+/** Ledger account kinds as finance reads them (the ledger view, not the user-facing wallet wording). */
+export const LEDGER_KIND: Record<string, string> = {
+  worker_earnings: 'Worker earnings', employer_available: 'Employer available', employer_reserved: 'Employer reserved',
+  payout_clearing: 'Withdrawals in transit', gateway_clearing: 'Gateway clearing', platform_revenue: 'Platform revenue',
+  referral_expense: 'Referral commissions', adjustments: 'Adjustments', treasury: 'Treasury', gateway_fees: 'Provider fees',
+};
+const SYSTEM_PART: Record<string, string> = {
+  bkash_merchant: 'bKash merchant', nagad_merchant: 'Nagad merchant', rocket_merchant: 'Rocket merchant', usdt_hot_wallet: 'USDT hot wallet',
+  bank_main: 'Main bank', bkash_checkout: 'bKash checkout', bkash_manual: 'bKash manual', nowpayments: 'NOWPayments', sslcommerz: 'SSLCommerz', mock: 'Test gateway',
+};
+
+/** "Treasury · bKash merchant", "Worker earnings" (owner shown separately), "Platform revenue". */
+export function accountName(kind: string, systemCode?: string | null) {
+  const base = LEDGER_KIND[kind] ?? kind.replace(/_/g, ' ');
+  const part = systemCode?.includes(':') ? systemCode.split(':')[1]! : null;
+  if (!part) return base;
+  return `${base} · ${SYSTEM_PART[part] ?? part.replace(/_/g, ' ')}`;
+}
 
 /** SLA treatment (Doc 09 §5.2): "Overdue" Danger, "Due in 3 h" Warning under 6 h, otherwise plain text. */
 export function SlaCell({ due, now }: { due: string | null | undefined; now: number }) {

@@ -42,6 +42,8 @@ export const jobWriteSchema = z
     category: z.string().max(40).nullish(),
     subcategory: z.string().max(60).nullish(),
     target_zone: z.string().max(30).optional(),
+    /** "Show in" picks inside the zone. Empty = the whole zone. */
+    target_countries: z.array(z.string().max(2)).max(200).optional(),
     excluded_countries: z.array(z.string().max(2)).max(200).optional(),
     note: z.string().max(1000).nullish(),
     thumbnail_upload_id: z.string().uuid().nullish(),
@@ -101,8 +103,10 @@ export function validateStep(step: number, j: JobFull, lim: JobLimits): Errors {
     if (!zone) add(e, 'target_zone', 'Choose where workers can be.');
     else {
       const allowed = new Set(zoneCountries(zone.slug));
+      if (j.targetCountries.some((c) => !allowed.has(c))) add(e, 'target_countries', 'Only show the job in countries inside the selected zone.');
       if (j.excludedCountries.some((c) => !allowed.has(c))) add(e, 'excluded_countries', 'Only hide countries inside the selected zone.');
-      if (allowed.size && j.excludedCountries.length >= allowed.size) add(e, 'excluded_countries', 'Keep at least one country open.');
+      const shown = j.targetCountries.length ? j.targetCountries : [...allowed];
+      if (shown.length && shown.every((c) => j.excludedCountries.includes(c))) add(e, 'excluded_countries', 'Keep at least one country open.');
     }
   }
   if (step === 2) {

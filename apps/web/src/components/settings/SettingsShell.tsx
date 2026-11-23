@@ -27,7 +27,7 @@ export function SettingsShell({ items, children }: { items: SettingsNavItem[]; c
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div className="mx-auto flex w-full min-w-0 max-w-[1104px] flex-col gap-6">{children}</div>;
+  return <div className="flex w-full min-w-0 flex-col gap-6">{children}</div>;
 }
 
 /** Section card (Figma 44:911…): radius 16, padding 32 desktop, title H4 + subtitle. */

@@ -9,9 +9,8 @@ import { apiFetch, api, ApiError, errorText, idemKey, useWallet, type ManualChan
 import { useEmployerHeader } from './shell';
 import { ErrorPanel } from './common';
 
-/** A manual rail (bKash, Nagad, Rocket, Binance Pay, USDT) or the card gateway if an admin turns it on. */
+/** A manual rail (bKash, Nagad, Rocket, Binance Pay, USDT on TRC20/BEP20/ERC20) or the card gateway if an admin turns it on. */
 type Choice = ManualChannelId | 'card';
-const CHANNEL_SUB: Record<ManualChannelId, string> = { bkash: 'Mobile wallet', nagad: 'Mobile wallet', rocket: 'Mobile wallet', binance_pay: 'Pay in USDT', usdt_trc20: 'TRON network' };
 
 /** SCR-WAL-05 Employer wallet: Add funds (Figma 42:1206). */
 export function EmployerWallet() {
@@ -39,7 +38,7 @@ function Body({ w }: { w: WalletSummary }) {
   const af = w.add_funds;
   const cardOn = af.methods.some((m) => m.method === 'card');
   const tiles: { id: Choice; label: string; sub: string }[] = [
-    ...af.manual_channels.map((c) => ({ id: c.channel as Choice, label: c.label, sub: CHANNEL_SUB[c.channel] })),
+    ...af.manual_channels.map((c) => ({ id: c.channel as Choice, label: c.label, sub: c.subtitle })),
     ...(cardOn ? [{ id: 'card' as Choice, label: 'Card', sub: 'Visa · Mastercard' }] : []),
   ];
   const prefill = sp.get('add');
@@ -183,7 +182,7 @@ function Body({ w }: { w: WalletSummary }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 desktop:grid-cols-[minmax(0,720px)_minmax(0,360px)] desktop:justify-between [&>*]:min-w-0">
+      <div className="grid grid-cols-1 gap-6 desktop:grid-cols-[minmax(0,1fr)_minmax(0,360px)] [&>*]:min-w-0">
         <section ref={formRef} data-stagger aria-labelledby="af-h" className="scroll-mt-28 rounded-card border border-line bg-surface p-5 shadow-xs tablet:p-8">
           <h2 id="af-h" className="font-display text-h4 text-fg">
             Add funds

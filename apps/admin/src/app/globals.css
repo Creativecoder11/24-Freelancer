@@ -14,7 +14,9 @@ body { background: var(--fl-bg-surface); color: var(--fl-text-primary); }
 
 /* Motion bootstrapping: elements hide only when JS + motion are available. */
 .motion [data-reveal-item] { opacity: 0; }
-.motion:not(.motion-ready) [data-reveal-item] { animation: fl-reveal-fallback 0.3s 2s forwards; }
+/* Safety net on every page: anything a stagger never reached (a page without useStagger, opened
+   after the dashboard set motion-ready) still appears after 2 s. A stagger finishes well before. */
+.motion [data-reveal-item] { animation: fl-reveal-fallback 0.3s 2s forwards; }
 @keyframes fl-reveal-fallback { to { opacity: 1; } }
 
 /* KYC watermark (Doc 09 §8.2). */

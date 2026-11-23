@@ -35,6 +35,7 @@ export const SETTING_RULES: Record<string, SettingRule> = {
   // Job promotion (CR-2026-11b): Top, Pin, Combo prices and Pin length.
   job_top_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
   job_pin_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
+  job_extra_worker_fee_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1, dp: 3 }),
   job_combo_price_usd: r('jobs', 'number', 'C2', 'New purchases', { min: 0, max: 1000, dp: 2 }),
   job_pin_hours: r('jobs', 'integer', 'C1', 'New purchases', { min: 1, max: 720 }),
   job_schedule_max_days: r('jobs', 'integer', 'C1', 'New jobs', { min: 1, max: 90 }),
@@ -113,6 +114,17 @@ export const SETTING_RULES: Record<string, SettingRule> = {
   binance_pay_manual_id: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
   usdt_trc20_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
   usdt_trc20_manual_address: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
+  // More USDT networks and per-rail instructions (Admin → Settings → Deposit methods).
+  usdt_bep20_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  usdt_bep20_manual_address: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
+  usdt_erc20_manual_enabled: r('deposits', 'boolean', 'C1', 'Immediately'),
+  usdt_erc20_manual_address: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 64 }),
+  nagad_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  rocket_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  binance_pay_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  usdt_trc20_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  usdt_bep20_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
+  usdt_erc20_manual_instructions: r('deposits', 'string', 'C1', 'Immediately', { maxLen: 500 }),
 
   withdrawal_daily_max_usd: r('withdrawals', 'number', 'C3', 'New requests', { min: 1, max: 1000000, dp: 2, superOnly: true }),
   withdrawal_daily_count_max: r('withdrawals', 'integer', 'C2', 'New requests', { min: 1, max: 50, superOnly: true }),
@@ -161,7 +173,7 @@ export const SETTING_RULES: Record<string, SettingRule> = {
 export const GROUP_ORDER = ['incident', 'jobs', 'review', 'moderation', 'accounts', 'kyc', 'deposits', 'withdrawals', 'fx', 'referral', 'uploads', 'company', 'other'];
 export const GROUP_LABEL: Record<string, string> = {
   incident: 'Incident switches', jobs: 'Jobs and slots', review: 'Review and disputes', moderation: 'Job moderation', accounts: 'Accounts and sign-in',
-  kyc: 'KYC', deposits: 'Deposits', withdrawals: 'Withdrawals and payouts', fx: 'FX', referral: 'Referral', uploads: 'Uploads and retention', company: 'Site and company', other: 'Other',
+  kyc: 'KYC', deposits: 'Deposits', withdrawals: 'Withdrawals and payouts', fx: 'Exchange rate', referral: 'Referral', uploads: 'Uploads and retention', company: 'Site and company', other: 'Other',
 };
 
 /** Returns the parsed value or an error message. */

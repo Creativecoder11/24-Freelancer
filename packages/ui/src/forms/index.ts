@@ -2,6 +2,7 @@ export * from './FieldShell';
 export * from './Field';
 export * from './Textarea';
 export * from './Select';
+export * from './MultiSelect';
 export * from './Search';
 export * from './Checkbox';
 export * from './Switch';

@@ -116,10 +116,12 @@ export class AdminLedgerService {
     if (q.view === 'mine') Object.assign(where, { status: 'pending_approval', createdByAdminId: ctx.id });
     else if (q.view === 'needs_me') Object.assign(where, { status: 'pending_approval', createdByAdminId: { not: ctx.id } });
     else if (q.status && q.status !== 'all') where.status = q.status;
-    const [rows, total, pending] = await Promise.all([
+    const [rows, total, pending, needsMe] = await Promise.all([
       this.db.ledgerAdjustmentRequest.findMany({ where, orderBy: { createdAt: 'desc' }, skip: p.skip, take: p.take, include: { account: { include: { ownerUser: { select: { publicId: true } } } }, createdByAdmin: { select: { fullName: true } }, decidedByAdmin: { select: { fullName: true } }, ledgerTx: { select: { publicRef: true } } } }),
       this.db.ledgerAdjustmentRequest.count({ where }),
       this.db.ledgerAdjustmentRequest.count({ where: { status: 'pending_approval' } }),
+      // What this admin can act on: pending, and made by someone else (makers never approve their own).
+      this.db.ledgerAdjustmentRequest.count({ where: { status: 'pending_approval', createdByAdminId: { not: ctx.id } } }),
     ]);
     return paged(
       rows.map((a) => ({
@@ -144,7 +146,7 @@ export class AdminLedgerService {
       })),
       total,
       p,
-      { counts: { pending_approval: pending } },
+      { counts: { pending_approval: pending, needs_me: needsMe } },
     );
   }
 

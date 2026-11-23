@@ -73,7 +73,7 @@
   --fl-ease-out:cubic-bezier(0.2,0,0,1); --fl-ease-in:cubic-bezier(0.4,0,1,1);
 
   /* Z-index */
-  --fl-z-sticky:100; --fl-z-sidebar:110; --fl-z-actionbar:120; --fl-z-menu:200; --fl-z-tooltip:300;
+  --fl-z-sticky:100; --fl-z-sidebar:110; --fl-z-actionbar:120; --fl-z-menu:550; --fl-z-tooltip:560;
   --fl-z-drawer:400; --fl-z-dialog:500; --fl-z-toast:600;
 }
 

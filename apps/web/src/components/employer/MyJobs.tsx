@@ -90,7 +90,8 @@ export function MyJobs() {
                   <col className="w-[110px] max-desktop:hidden" />
                   <col className="w-[150px]" />
                   <col className="w-[120px] max-desktop:hidden" />
-                  <col className="w-[60px]" />
+                  {/* Wider only when a row shows Promote. */}
+                  <col className={rows.some(canPromote) ? 'w-[188px] max-desktop:w-[104px]' : 'w-[60px]'} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-line-subtle bg-subtle text-overline uppercase text-fg-tertiary">
@@ -134,7 +135,17 @@ export function MyJobs() {
                       </td>
                       <td className="px-3 py-4 text-fg-secondary max-desktop:hidden">{endsCell(j)}</td>
                       <td className="relative z-[1] px-3 py-4 text-right">
-                        <ActionMenu label={`Actions for ${j.title ?? 'job'}`} items={actions.menuItems(j)} trigger={<IconButton icon="more" aria-label={`Actions for ${j.title ?? 'job'}`} variant="ghost" tooltip={false} />} />
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {canPromote(j) ? (
+                            <>
+                              <Button size="S" variant="secondary" leadingIcon="trending-up" onClick={() => actions.open('promote', j)} className="max-desktop:hidden">
+                                Promote
+                              </Button>
+                              <IconButton icon="trending-up" aria-label={`Promote ${j.title ?? 'job'}`} variant="secondary" size="S" onClick={() => actions.open('promote', j)} className="desktop:hidden" />
+                            </>
+                          ) : null}
+                          <ActionMenu label={`Actions for ${j.title ?? 'job'}`} items={actions.menuItems(j)} trigger={<IconButton icon="more" aria-label={`Actions for ${j.title ?? 'job'}`} variant="ghost" tooltip={false} />} />
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -168,6 +179,11 @@ export function MyJobs() {
                     <span>{endsCell(j)}</span>
                     {j.to_review > 0 ? <span className="rounded-full bg-warning-subtle px-2 py-0.5 font-semibold text-fg-warning">{j.to_review} to review</span> : null}
                   </div>
+                  {canPromote(j) ? (
+                    <Button size="S" variant="secondary" leadingIcon="trending-up" onClick={() => actions.open('promote', j)} className="relative z-[1] mt-3 w-full">
+                      Promote
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -194,6 +210,8 @@ function metaLine(j: JobListRow) {
   const cat = j.category?.name ?? 'No category';
   return j.status === 'draft' ? `${cat} · draft` : `${cat} · posted ${formatDate(j.published_at ?? j.created_at)}`;
 }
+const canPromote = (j: JobListRow) => j.allowed_actions.includes('promote');
+
 function endsCell(j: JobListRow) {
   if (j.status === 'draft') return 'Not published';
   if (j.status === 'paused') return j.pause_reason === 'low_deposit' ? 'Paused · low deposit' : j.pause_reason === 'admin' ? 'Paused by admin' : 'Paused';

@@ -38,7 +38,7 @@ export function ReferralPage() {
   if (q.isError) return <LoadError error={q.error} onRetry={() => q.refetch()} body={q.error.code === 'FEATURE_DISABLED' ? 'The referral program is paused right now.' : undefined} />;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1104px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {s ? <Hero s={s} /> : <Skeleton height={272} radius={20} />}
 
       <div className="grid grid-cols-2 gap-4 tablet:grid-cols-3 desktop:grid-cols-5">

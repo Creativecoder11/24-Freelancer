@@ -53,7 +53,8 @@ INSERT INTO platform_settings (key, value, value_type, description, source_ref, 
  ('job_min_spend_usd',        '0.80',    'number',  'Minimum worker payout per job (slots × reward) before it can be published.', 'CR-2026-11', true),
  ('job_schedule_max_days',    '30',      'integer', 'How far ahead (days) an employer can schedule a job to go live.', 'CR-2026-11', true),
  ('job_top_price_usd',        '5.00',    'number',  'Top: moves a running job to the top of standard listings. A newer Top goes above an older one.', 'CR-2026-11b', true),
- ('job_pin_price_usd',        '10.00',   'number',  'Pin: keeps a running job above all other jobs for job_pin_hours.', 'CR-2026-11b', true),
+ ('job_pin_price_usd',        '5.00',    'number',  'Pin: keeps a running job above all other jobs for job_pin_hours.', 'CR-2026-11b', true),
  ('job_combo_price_usd',      '8.00',    'number',  'Combo: Pin and Top together at a discount.', 'CR-2026-11b', true),
- ('job_pin_hours',            '24',      'integer', 'How long one Pin lasts. Buying again extends it.', 'CR-2026-11b', true)
+ ('job_pin_hours',            '24',      'integer', 'How long one Pin lasts. Buying again extends it.', 'CR-2026-11b', true),
+ ('job_extra_worker_fee_usd', '0.001',   'number',  'Admin fee per worker added to a posted job (Add slots or a higher worker count in Edit job). Not refunded.', 'CR-2026-11c', true)
 ON CONFLICT (key) DO NOTHING;

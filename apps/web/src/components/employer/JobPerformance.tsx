@@ -80,14 +80,9 @@ function Body({ d }: { d: Performance }) {
               Edit job
             </Button>
           ) : null}
-          {a.includes('promote') ? (
-            <Button variant="secondary" leadingIcon="trending-up" onClick={() => actions.open('promote', aj)}>
-              Promote
-            </Button>
-          ) : null}
           {a.includes('add_slots') ? (
             <Button onClick={() => actions.open('slots', aj)} className="min-w-[140px]">
-              Add slots
+              Add workers
             </Button>
           ) : null}
           {a.includes('duplicate') && !a.includes('add_slots') ? (

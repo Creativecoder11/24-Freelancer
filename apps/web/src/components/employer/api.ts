@@ -114,6 +114,8 @@ export interface JobDetail {
   category: { slug: string; name: string } | null;
   subcategory: { slug: string; name: string } | null;
   target_zone: string;
+  /** "Show in" picks inside the zone. Empty = the whole zone. */
+  target_countries: string[];
   excluded_countries: string[];
   note: string | null;
   thumbnail_upload_id: string | null;
@@ -283,10 +285,12 @@ export interface WalletSummary {
   };
 }
 
-export type ManualChannelId = 'bkash' | 'nagad' | 'rocket' | 'binance_pay' | 'usdt_trc20';
+export type ManualChannelId = 'bkash' | 'nagad' | 'rocket' | 'binance_pay' | 'usdt_trc20' | 'usdt_bep20' | 'usdt_erc20';
 export interface ManualChannel {
   channel: ManualChannelId;
   label: string;
+  /** Second line on the tile ("Mobile wallet", "TRON network"…). */
+  subtitle: string;
   group: 'mobile_wallet' | 'crypto';
   currency: 'BDT' | 'USD';
   deposit_fx_rate: string | null;
@@ -413,6 +417,8 @@ export interface PromotionOptions {
   pin_price_usd: string;
   combo_price_usd: string;
   pin_hours: number;
+  /** Admin fee per worker added to a posted job. */
+  extra_worker_fee_usd: string;
 }
 export type PromotionKind = 'top' | 'pin' | 'combo';
 export function useJobOptions() {

@@ -78,7 +78,7 @@ export function TransactionsPage() {
 
   const m = list.data?.meta;
   return (
-    <div className="mx-auto flex w-full max-w-[1104px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {m ? (
         <div className="grid grid-cols-2 gap-4 tablet:max-w-[560px]">
           <div className="rounded-card border border-line bg-surface p-5 shadow-xs">

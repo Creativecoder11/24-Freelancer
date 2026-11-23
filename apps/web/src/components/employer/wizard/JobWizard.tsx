@@ -14,6 +14,7 @@ import {
   Field,
   Icon,
   JobRow,
+  MultiSelect,
   NumberStepper,
   Select,
   Skeleton,
@@ -340,7 +341,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
   const addFundsHref = `/employer/wallet?add=${Math.max(10, Math.ceil(shortfall * 100) / 100).toFixed(2)}&return=${encodeURIComponent(returnTo)}`;
 
   const stepHeader: Record<number, [string, string]> = {
-    1: ['Where should workers be?', 'Pick a zone. You can hide individual countries inside it.'],
+    1: ['Where should workers be?', 'Pick a zone, then choose countries to show or hide the job in.'],
     2: ['What kind of job is it?', 'Choose a category and a subcategory so the right workers find it.'],
     3: ['Tell workers exactly what to do', 'A clear title and numbered steps cut rejections. Workers tick each step before they can submit.'],
     4: ['Set your budget and settings', 'You pay the reward for each approved task. Nothing is charged until work is approved.'],
@@ -350,7 +351,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
   return (
     <div className="pb-28 desktop:pb-0">
       <WizardSteps current={step} reachable={reachable} hrefFor={(n) => `${base(publicId)}?step=${n}`} />
-      <div className="mt-6 grid gap-6 desktop:mt-8 desktop:grid-cols-[minmax(0,720px)_minmax(0,360px)] desktop:justify-between">
+      <div className="mt-6 grid gap-6 desktop:mt-8 desktop:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         <div ref={card} className="min-w-0 rounded-card border border-line bg-surface p-5 shadow-xs tablet:p-8">
           <div data-wz className="flex items-start justify-between gap-3">
             <div>
@@ -528,7 +529,7 @@ const base = (id: string | null) => (id ? `/employer/jobs/${id}/edit` : '/employ
 
 /** Form fields shown on each step (server errors outside this list are surfaced as a toast). */
 const STEP_FIELDS: Record<number, string[]> = {
-  1: ['target_zone', 'excluded_countries'],
+  1: ['target_zone', 'target_countries', 'excluded_countries'],
   2: ['category', 'subcategory'],
   3: ['title', 'note', 'time_per_task', 'steps', 'task_link_url', 'proof_requirements', 'proof_instructions', 'thumbnail_upload_id'],
   4: ['reward_usd', 'slots_total', 'open_for_days', 'eligibility', 'min_approval_rate', 'review_window_hours', 'starts_at'],
@@ -565,7 +566,7 @@ function SaveIndicator({ state }: { state: 'idle' | 'saving' | 'saved' | 'failed
 /** Stepper: 4 px bar above each step, numbered/checked dot, label. */
 function WizardSteps({ current, reachable, hrefFor }: { current: number; reachable: number; hrefFor: (n: number) => string }) {
   return (
-    <ol aria-label="Progress" className="grid max-w-[940px] grid-cols-5 gap-2 tablet:gap-4">
+    <ol aria-label="Progress" className="grid grid-cols-5 gap-2 tablet:gap-4">
       {STEP_LABELS.map((label, i) => {
         const n = i + 1;
         const state = n < current ? 'done' : n === current ? 'current' : 'todo';
@@ -614,14 +615,22 @@ function WizardSteps({ current, reachable, hrefFor }: { current: number; reachab
 type SetFn = <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
 type PatchFn = (p: Partial<WizardForm>) => void;
 
-/** Step 1 · Location: zone + optional countries to hide. */
+/** Step 1 · Location: zone, then optional "show in" and "hide from" country dropdowns. */
 function StepLocation({ form, patch, errors, locked }: { form: WizardForm; patch: PatchFn; errors: Record<string, string>; locked: Set<string> }) {
-  const [showAll, setShowAll] = useState(false);
+  const zone = jobZone(form.target_zone);
   const countries = zoneCountries(form.target_zone);
-  const LIMIT = 24;
-  // Keep hidden countries visible even when the list is collapsed.
-  const shown = showAll || countries.length <= LIMIT ? countries : [...new Set([...countries.slice(0, LIMIT), ...form.excluded_countries])];
+  const opt = (c: string) => ({ value: c, label: COUNTRY_NAMES[c] ?? c });
+  const picked = form.target_countries;
+  const hideOptions = countries.filter((c) => !picked.includes(c));
+  const hideDisabled = locked.has('excluded_countries') || picked.length > 0;
   const disabled = locked.has('target_zone');
+  const visible = (picked.length ? picked : countries).filter((c) => !form.excluded_countries.includes(c)).length;
+  const reach =
+    !zone?.countries && !picked.length
+      ? form.excluded_countries.length
+        ? `Workers everywhere except ${plural(form.excluded_countries.length, 'country', 'countries')} can see this job.`
+        : 'Workers in every country can see this job.'
+      : `Workers in ${plural(visible, 'country', 'countries')} can see this job.`;
   return (
     <>
       <div data-wz>
@@ -630,39 +639,47 @@ function StepLocation({ form, patch, errors, locked }: { form: WizardForm; patch
           mode="single"
           options={JOB_ZONES.map((z) => ({ value: z.slug, label: z.label }))}
           value={form.target_zone}
-          onChange={(v) => !disabled && v !== form.target_zone && patch({ target_zone: v as string, excluded_countries: [] })}
+          onChange={(v) => !disabled && v !== form.target_zone && patch({ target_zone: v as string, target_countries: [], excluded_countries: [] })}
           error={errors.target_zone}
         />
-        <p className="mt-2 text-body-sm text-fg-tertiary">
-          {jobZone(form.target_zone)?.countries ? `${countries.length} countries in this zone.` : 'Workers in every country can see this job.'}
-        </p>
+        <p className="mt-2 text-body-sm text-fg-tertiary">{zone?.countries ? `${countries.length} countries in this zone.` : 'Every country.'}</p>
       </div>
-      <div data-wz data-error-anchor={errors.excluded_countries ? '' : undefined} tabIndex={errors.excluded_countries ? -1 : undefined}>
-        <div className="rounded-[14px] border border-line-warning bg-warning-subtle px-4 py-3 text-body-sm text-fg-secondary">
-          Select countries you want to hide from the selected zone <span className="text-fg-tertiary">(optional)</span>
-        </div>
-        <div className="mt-4">
-          <ChoiceChipGroup
-            legend="Hide these countries"
-            legendHidden
-            mode="multi"
-            options={shown.map((c) => ({ value: c, label: COUNTRY_NAMES[c] ?? c }))}
-            value={form.excluded_countries}
-            onChange={(v) => !locked.has('excluded_countries') && patch({ excluded_countries: [...(v as string[])].sort() })}
-            error={errors.excluded_countries}
-          />
-        </div>
-        {countries.length > LIMIT ? (
-          <button type="button" onClick={() => setShowAll((s) => !s)} className="mt-3 text-label-md text-fg-brand hover:underline focus-visible:shadow-focus focus-visible:outline-none">
-            {showAll ? 'Show fewer countries' : `Show all ${countries.length} countries`}
-          </button>
-        ) : null}
-        {form.excluded_countries.length ? (
-          <p className="mt-3 text-body-sm text-fg-secondary">
-            Hidden from {plural(form.excluded_countries.length, 'country', 'countries')}. Workers there won’t see this job.
-          </p>
-        ) : null}
+      <div data-wz>
+        <MultiSelect
+          label="Show this job in"
+          optional
+          options={countries.map(opt)}
+          value={picked}
+          onChange={(v) => {
+            if (locked.has('target_countries')) return;
+            const next = [...v].sort();
+            // Once the job only shows in picked countries, a hide list is redundant.
+            patch({ target_countries: next, excluded_countries: next.length ? [] : form.excluded_countries });
+          }}
+          placeholder={zone?.countries ? `All countries in ${zone.label}` : 'All countries'}
+          searchPlaceholder="Search countries"
+          helper="Pick countries to show the job only there. Leave empty to show it in the whole zone."
+          error={errors.target_countries}
+          disabled={locked.has('target_countries')}
+        />
       </div>
+      <div data-wz>
+        <MultiSelect
+          label="Hide this job from"
+          optional
+          options={hideOptions.map(opt)}
+          value={form.excluded_countries.filter((c) => hideOptions.includes(c))}
+          onChange={(v) => !hideDisabled && patch({ excluded_countries: [...v].sort() })}
+          placeholder={picked.length ? 'Not needed' : 'No countries hidden'}
+          searchPlaceholder="Search countries"
+          helper={picked.length ? 'Not needed: the job only shows in the countries you picked above.' : 'Workers in these countries won’t see the job.'}
+          error={errors.excluded_countries}
+          disabled={hideDisabled}
+        />
+      </div>
+      <p data-wz className="text-body-sm text-fg-secondary">
+        {reach}
+      </p>
     </>
   );
 }
@@ -920,6 +937,11 @@ function StepBudget({
       ) : null}
       <div data-wz>
         <NumberStepper label="Workers needed" value={form.slots_total} onChange={(v) => set('slots_total', v)} min={1} max={10000} presets={SLOT_PRESETS} error={errors.slots_total} />
+        {published && job?.slots_total && form.slots_total > job.slots_total && Number(options?.promotion.extra_worker_fee_usd ?? 0) > 0 ? (
+          <p className="mt-2 rounded-[10px] bg-subtle px-3 py-2 text-body-sm text-fg-secondary">
+            Adding {plural(form.slots_total - job.slots_total, 'worker')}: admin fee {formatReward(((form.slots_total - job.slots_total) * Number(options!.promotion.extra_worker_fee_usd)).toFixed(6))} ({formatReward(Number(options!.promotion.extra_worker_fee_usd).toFixed(3))} each), paid when you save. Not refunded.
+          </p>
+        ) : null}
       </div>
       <div data-wz className="grid gap-4 tablet:grid-cols-2 tablet:items-end">
         <CurrencyInput
@@ -1030,7 +1052,7 @@ function StepReview({
   const steps = form.steps.filter((s) => s.body.trim()).length;
   const startsAt = published ? job?.starts_at : form.starts_at ? new Date(form.starts_at).toISOString() : null;
   const sections: { title: string; step: number; rows: [string, string][] }[] = [
-    { title: 'Location', step: 1, rows: [['Workers in', targetingLabel(form.target_zone, form.excluded_countries)]] },
+    { title: 'Location', step: 1, rows: [['Workers in', targetingLabel(form.target_zone, form.excluded_countries, form.target_countries)]] },
     { title: 'Category', step: 2, rows: [['Category', subName ? `${catName} · ${subName}` : catName]] },
     {
       title: 'Job information',
@@ -1135,7 +1157,7 @@ function Rail({
               title: form.title.trim() || 'Your job title',
               category: subName ? `${catName} · ${subName}` : catName,
               employer: `≈ ${minutes} min`,
-              ageLabel: targetingLabel(form.target_zone, form.excluded_countries),
+              ageLabel: targetingLabel(form.target_zone, form.excluded_countries, form.target_countries),
               slotsFilled: 0,
               slotsTotal: form.slots_total,
               rewardLabel: reward,
@@ -1221,7 +1243,7 @@ function WizardSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading">
       <Skeleton height={40} width="60%" radius={8} />
-      <div className="mt-8 grid gap-6 desktop:grid-cols-[720px_360px] desktop:justify-between">
+      <div className="mt-8 grid gap-6 desktop:grid-cols-[minmax(0,1fr)_360px]">
         <Skeleton.Form fields={5} />
         <Skeleton.JobCard />
       </div>

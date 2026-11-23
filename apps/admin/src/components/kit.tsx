@@ -321,6 +321,8 @@ export interface ActionSpec {
   success?: string | ((data: unknown) => string);
   onDone?: (data: unknown) => void;
   confirmLabel?: (v: Values) => string;
+  /** Don't mark non-required fields "(optional)". */
+  hideOptional?: boolean;
 }
 
 /** Shared action dialog: reason fields, validation, Idempotency-Key per open, toasts (Doc 09 §5.4). */
@@ -420,7 +422,7 @@ export function ActionDialog({ spec, onClose }: { spec: ActionSpec | null; onClo
       >
         {(spec.fields ?? []).map((f) => {
           const err = errs[f.name];
-          if (f.type === 'textarea') return <Textarea key={f.name} label={f.label} helper={f.helper} error={err} value={String(vals[f.name] ?? '')} softMax={f.max} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} optional={!f.required} />;
+          if (f.type === 'textarea') return <Textarea key={f.name} label={f.label} helper={f.helper} error={err} value={String(vals[f.name] ?? '')} softMax={f.max} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} optional={!f.required && !spec.hideOptional} />;
           if (f.type === 'select') return <Select key={f.name} label={f.label} helper={f.helper} error={err} value={String(vals[f.name] ?? '') || null} options={f.options} onChange={(v) => { set(f.name, v); f.onPick?.(v, set); }} />;
           if (f.type === 'radio') return <div key={f.name} data-err={err ? 1 : 0}><RadioGroup legend={f.label} name={`${formId}-${f.name}`} value={String(vals[f.name] ?? '')} options={f.options} error={err} onChange={(v) => { set(f.name, v); f.onPick?.(v, set); }} /></div>;
           if (f.type === 'checkbox') return <Checkbox key={f.name} label={f.label} description={f.description} error={err} checked={vals[f.name] === true} onChange={(e) => set(f.name, e.target.checked)} />;
@@ -466,7 +468,7 @@ export function ActionDialog({ spec, onClose }: { spec: ActionSpec | null; onClo
               helper={f.helper}
               error={err}
               placeholder={f.placeholder}
-              optional={!f.required}
+              optional={!f.required && !spec.hideOptional}
               value={String(vals[f.name] ?? '')}
               onChange={(e) => set(f.name, f.transform ? f.transform(e.target.value) : e.target.value)}
             />

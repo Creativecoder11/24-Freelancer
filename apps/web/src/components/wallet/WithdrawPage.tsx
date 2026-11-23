@@ -154,7 +154,7 @@ export function WithdrawPage() {
   if (!w || !pm.data) return <WithdrawSkeleton />;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1104px] gap-6 pb-28 desktop:grid-cols-[minmax(0,720px)_minmax(0,360px)] desktop:pb-0">
+    <div className="grid w-full gap-6 pb-28 desktop:grid-cols-[minmax(0,1fr)_minmax(0,360px)] desktop:pb-0">
       <div className="flex min-w-0 flex-col gap-4">
         {/* Mobile balance card (48:1238) */}
         <div className="rounded-card bg-inverse px-5 py-4 tablet:hidden">
@@ -435,7 +435,7 @@ function Summary({ quote, loading, methodLabel, amountLabel, usdt }: { quote?: Q
 
 function WithdrawSkeleton() {
   return (
-    <div className="mx-auto grid w-full max-w-[1104px] gap-6 desktop:grid-cols-[minmax(0,720px)_minmax(0,360px)]" aria-busy="true">
+    <div className="grid w-full gap-6 desktop:grid-cols-[minmax(0,1fr)_minmax(0,360px)]" aria-busy="true">
       <div className="rounded-card border border-line bg-surface p-8">
         <Skeleton width={260} height={24} />
         <div className="mt-6 grid grid-cols-2 gap-3 tablet:grid-cols-4">

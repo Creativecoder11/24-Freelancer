@@ -25,7 +25,7 @@ export function WalletPage() {
   const w = wallet.data;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1104px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <h2 className="sr-only">Balances</h2>
       {wallet.isError ? (
         <LoadError error={wallet.error} onRetry={() => wallet.refetch()} />

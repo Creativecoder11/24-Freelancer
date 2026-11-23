@@ -14,6 +14,7 @@ import { AuditService } from './core/audit.service';
 import { DualControlService } from './core/dual-control';
 import { AdminNotifier } from './core/notify';
 import { AdminUsersController, AdminUsersService } from './users/admin-users';
+import { AdminMediaController, AdminMediaService } from './users/admin-media';
 import { AdminJobsController, AdminJobsService } from './jobs/admin-jobs';
 import { AdminWorkController, AdminWorkService } from './work/admin-work';
 import { AdminKycController, AdminKycService } from './kyc/admin-kyc';
@@ -35,6 +36,7 @@ import { AdminOpsController, AdminOpsService } from './system/admin-ops';
     AdminMeController,
     AdminOpsController,
     AdminUsersController,
+    AdminMediaController,
     AdminKycController,
     AdminJobsController,
     AdminWorkController,
@@ -53,6 +55,7 @@ import { AdminOpsController, AdminOpsService } from './system/admin-ops';
     AdminGuard,
     AdminAuditInterceptor,
     AdminUsersService,
+    AdminMediaService,
     AdminJobsService,
     AdminWorkService,
     AdminKycService,

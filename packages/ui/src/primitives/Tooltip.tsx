@@ -78,7 +78,7 @@ export function Tooltip({ content, children, side = 'top', delay = 500, open: fo
           role="tooltip"
           style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
           className={cn(
-            'pointer-events-none fixed z-[300] max-w-[240px] rounded-[10px] bg-inverse px-3 py-2.5 text-body-xs text-fg-inverse',
+            'pointer-events-none fixed z-[var(--fl-z-tooltip)] max-w-[240px] rounded-[10px] bg-inverse px-3 py-2.5 text-body-xs text-fg-inverse',
             'transition-opacity duration-[120ms]',
             isOpen && pos ? 'opacity-100' : 'invisible opacity-0',
           )}

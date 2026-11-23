@@ -46,7 +46,8 @@ export class UploadsController {
     const f = await this.svc.readSigned(id, v ?? 'full', Number(exp), sig);
     res.setHeader('Content-Type', f.contentType);
     res.setHeader('Content-Disposition', f.disposition);
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    // Identity documents are never cached by the browser.
+    res.setHeader('Cache-Control', f.sensitive ? 'no-store' : 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.end(f.data);

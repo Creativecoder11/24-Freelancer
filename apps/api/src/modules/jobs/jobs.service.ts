@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, type Job } from '@24f/db';
 import Decimal from 'decimal.js';
-import { jobZone, zoneTargetCountries } from '@24f/shared';
+import { jobZone, pickedTargetCountries, resolveTargetCountries, zoneTargetCountries } from '@24f/shared';
 import { ApiError } from '../../common/api-error';
 import { Paged } from '../../common/envelope.interceptor';
 import { SettingsService } from '../settings/settings.service';
@@ -44,11 +44,12 @@ const DEFAULT_RULES = {
 };
 
 /** Fields that lock at the first submission (Doc 04 §5.8, VR-091). */
-const LOCKABLE: Record<string, keyof Job | 'steps' | 'proof_requirements' | 'subcategory' | 'excluded_countries'> = {
+const LOCKABLE: Record<string, keyof Job | 'steps' | 'proof_requirements' | 'subcategory' | 'target_countries' | 'excluded_countries'> = {
   title: 'title',
   category: 'categoryId',
   subcategory: 'subcategory',
   target_zone: 'targetZone',
+  target_countries: 'target_countries',
   excluded_countries: 'excluded_countries',
   note: 'note',
   time_per_task: 'timePerTask',
@@ -151,6 +152,7 @@ export class JobsService {
       category: j.category ? { slug: j.category.slug, name: j.category.name } : null,
       subcategory: j.subcategory ? { slug: j.subcategory.slug, name: j.subcategory.name } : null,
       target_zone: j.targetZone,
+      target_countries: pickedTargetCountries(j.targetZone, j.targetCountries),
       excluded_countries: j.excludedCountries,
       note: j.note,
       thumbnail_upload_id: j.thumbnailUploadId,
@@ -332,6 +334,7 @@ export class JobsService {
     }
     if (b.task_link_url && b.task_link_url.trim() && !/^https:\/\/\S+$/i.test(b.task_link_url.trim())) errs.task_link_url = ['Enter a full link starting with https://.'];
     if (b.target_zone !== undefined && !jobZone(b.target_zone)) errs.target_zone = ['Choose where workers can be.'];
+    if (b.target_countries?.some((c) => !isKnownCountry(c.toUpperCase()))) errs.target_countries = ['Pick countries from the list.'];
     if (b.excluded_countries?.some((c) => !isKnownCountry(c.toUpperCase()))) errs.excluded_countries = ['Pick countries from the list.'];
     if (b.note && [...b.note.trim()].length > 300) errs.note = ['Keep the note under 300 characters.'];
     if (b.starts_at !== undefined && job.status !== 'draft') {
@@ -361,10 +364,9 @@ export class JobsService {
         data.subcategoryId = sub.id;
       }
     }
-    if (b.target_zone !== undefined) {
-      data.targetZone = b.target_zone;
-      data.targetCountries = zoneTargetCountries(b.target_zone);
-    }
+    if (b.target_zone !== undefined) data.targetZone = b.target_zone;
+    if (b.target_countries !== undefined) data.targetCountries = resolveTargetCountries(b.target_zone ?? job.targetZone, b.target_countries);
+    else if (b.target_zone !== undefined && b.target_zone !== job.targetZone) data.targetCountries = zoneTargetCountries(b.target_zone);
     if (b.excluded_countries !== undefined) data.excludedCountries = [...new Set(b.excluded_countries.map((c) => c.toUpperCase()))].sort();
     if (b.note !== undefined) data.note = b.note?.trim().slice(0, 300) || null;
     if (b.thumbnail_upload_id !== undefined) {
@@ -454,6 +456,11 @@ export class JobsService {
             return v !== (before.category?.slug ?? null);
           case 'subcategory':
             return (v || null) !== (before.subcategory?.slug ?? null);
+          case 'target_countries':
+            return (
+              JSON.stringify(pickedTargetCountries(before.targetZone, resolveTargetCountries(before.targetZone, v as string[]))) !==
+              JSON.stringify(pickedTargetCountries(before.targetZone, before.targetCountries))
+            );
           case 'excluded_countries':
             return JSON.stringify([...new Set((v as string[]).map((c) => c.toUpperCase()))].sort()) !== JSON.stringify(before.excludedCountries);
           case 'note':
@@ -508,6 +515,11 @@ export class JobsService {
           const errs = validateStep(s, after, lim);
           if (Object.keys(errs).length) throw new ApiError('VALIDATION_FAILED', undefined, errs);
         }
+      }
+
+      // Extra-worker fee when a posted job's worker count goes up in Edit job.
+      if (published && after.slotsTotal && job.slotsTotal && after.slotsTotal > job.slotsTotal) {
+        await this.chargeExtraWorkers(tx, userId, after, after.slotsTotal - job.slotsTotal, `job:${after.publicId}:slotfee:edit:${after.version}`);
       }
 
       // Money difference on a running job (FR-EJOB-022).
@@ -825,8 +837,10 @@ export class JobsService {
       const room = max - (job.slotsTotal ?? 0);
       if (!Number.isInteger(n) || n < 1 || n > room) throw new ApiError('VALIDATION_FAILED', undefined, { add_slots: [`Add between 1 and ${room} slots.`] });
       const amount = job.status === 'running' ? unitCost(job).mul(n) : new Decimal(0);
-      if (body.expected_amount_usd !== undefined && !this.sameAmount(body.expected_amount_usd, amount))
-        throw new ApiError('QUOTE_CHANGED', undefined, undefined, { total_reserved_usd: usd2(amount) });
+      const feeQuote = (await this.extraWorkerFee()).mul(n);
+      // The client shows reserve + fee as one total; older clients send the reserve alone.
+      if (body.expected_amount_usd !== undefined && !this.sameAmount(body.expected_amount_usd, amount.plus(feeQuote)) && !this.sameAmount(body.expected_amount_usd, amount))
+        throw new ApiError('QUOTE_CHANGED', undefined, undefined, { total_reserved_usd: usd2(amount), fee_usd: usd2Up(feeQuote) });
       await tx.job.update({ where: { id: job.id }, data: { slotsTotal: { increment: n }, version: { increment: 1 } } });
       const t =
         job.status === 'running'
@@ -840,6 +854,7 @@ export class JobsService {
               { userId },
             )
           : null;
+      const fee = await this.chargeExtraWorkers(tx, userId, job, n, `job:${job.publicId}:slotfee:${idemKey}`);
       const fresh = await tx.job.findUniqueOrThrow({ where: { id: job.id } });
       const bal = await this.core.balances(userId, tx);
       return {
@@ -849,6 +864,7 @@ export class JobsService {
         slots_left: slotsLeftOf(fresh),
         added: n,
         amount_usd: usd2(amount),
+        fee_usd: fee.toFixed(3),
         ledger_ref: t?.publicRef ?? null,
         available_after_usd: usd2(bal.available),
       };
@@ -1058,10 +1074,49 @@ export class JobsService {
     const s = this.settings;
     return {
       top_price_usd: usd2(new Decimal(String(await s.get('job_top_price_usd', '5.00')))),
-      pin_price_usd: usd2(new Decimal(String(await s.get('job_pin_price_usd', '10.00')))),
+      pin_price_usd: usd2(new Decimal(String(await s.get('job_pin_price_usd', '5.00')))),
       combo_price_usd: usd2(new Decimal(String(await s.get('job_combo_price_usd', '8.00')))),
       pin_hours: await s.number('job_pin_hours', 24),
+      extra_worker_fee_usd: (await this.extraWorkerFee()).toFixed(3),
     };
+  }
+
+  /** Admin fee per worker added to a posted job (Add slots or a higher worker count in Edit job). */
+  async extraWorkerFee() {
+    const v = new Decimal(String(await this.settings.get('job_extra_worker_fee_usd', '0.001')));
+    return v.isNaN() || v.lt(0) ? new Decimal(0) : v;
+  }
+
+  /**
+   * Charges the extra-worker fee (fee x added) from the available balance to platform revenue.
+   * Not refunded. Same idempotency key -> charged once.
+   */
+  private async chargeExtraWorkers(tx: Prisma.TransactionClient, userId: string, job: { id: string; title: string | null; publicId: string }, added: number, key: string) {
+    const fee = (await this.extraWorkerFee()).mul(added);
+    if (added <= 0 || fee.lte(0)) return new Decimal(0);
+    if (await tx.ledgerTransaction.findUnique({ where: { idempotencyKey: key }, select: { id: true } })) return fee;
+    const acc = await this.core.lockAccounts(userId, tx);
+    if (acc.availableBal.lt(fee)) {
+      const short = fee.minus(acc.availableBal);
+      throw new ApiError('INSUFFICIENT_BALANCE', `You need $${usd2Up(short)} more for the extra-worker fee. Add funds first.`, undefined, { shortfall_usd: usd2Up(short), available_usd: usd2(acc.availableBal) });
+    }
+    const revenue = await this.core.ledger.systemAccount('platform_revenue', tx);
+    await this.core.ledger.post(
+      {
+        type: 'platform_fee',
+        idempotencyKey: key,
+        actor: 'user',
+        userId,
+        description: { title: job.title, kind: 'extra_workers', added },
+        refs: { jobId: job.id },
+        lines: [
+          { accountId: acc.available.id, amount: fee.neg().toFixed(6) },
+          { accountId: revenue.id, amount: fee.toFixed(6) },
+        ],
+      },
+      tx,
+    );
+    return fee;
   }
 
   /**
@@ -1087,6 +1142,8 @@ export class JobsService {
       const now = new Date();
       if (job.status !== 'running' || !job.endsAt || job.endsAt <= now) throw new ApiError('INVALID_STATE', 'Only running jobs can be promoted.');
       if (job.startsAt && job.startsAt > now) throw new ApiError('INVALID_STATE', 'This job hasn’t started yet. Promote it once it’s live.');
+      // Pin on its own unlocks once the job has been topped. Combo (Top + Pin together) has no condition.
+      if (body.kind === 'pin' && !job.toppedAt) throw new ApiError('INVALID_STATE', 'Buy Top for this job first. Pin unlocks after that.');
       const acc = await this.core.lockAccounts(userId, tx);
       if (acc.availableBal.lt(price)) {
         const short = price.minus(acc.availableBal);

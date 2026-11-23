@@ -4,7 +4,6 @@ import { Alert, Button, EmptyState, Search, Tabs, Tooltip, toast } from '@24f/ui
 import { usePageHeader } from '@/components/shell';
 import { ActionDialog, FilterSelect, Gate, KV, Pager, post, RefLink, SidePanel, SplitView, Table, Toolbar, type ActionSpec } from '@/components/kit';
 import { AdminBadge } from '@/components/badges';
-import { Kpi } from '@/components/charts';
 import { PendingCard, type Pending } from '@/components/pending';
 import { api, newIdemKey } from '@/lib/api';
 import { reportError, useApi, useUrlState } from '@/lib/hooks';
@@ -149,12 +148,11 @@ function Deposits() {
 
   return (
     <Gate perms={['deposits.read_masked', 'deposits.read']}>
-      <div className="mb-5 grid gap-4 tablet:grid-cols-3">
-        <Kpi label="Pending" value={counts.pending ?? 0} sub=" " />
-        <Kpi label="Needs review" value={counts.needs_review ?? 0} sub=" " />
-        <Kpi label="Waiting on approval" value={counts.pending_approval ?? 0} sub=" " />
-      </div>
-      <Tabs label="Deposit views" value={tab} panelId="dep" className="mb-4" onChange={(v) => u.set({ tab: v === 'all' ? null : v, ref: null })} tabs={TABS.filter((x) => x.value !== 'approval' || can('deposits.approve')).map((x) => ({ value: x.value, label: x.label }))} />
+      <Tabs label="Deposit views" value={tab} panelId="dep" className="mb-4" onChange={(v) => u.set({ tab: v === 'all' ? null : v, ref: null })} tabs={TABS.filter((x) => x.value !== 'approval' || can('deposits.approve')).map((x) => {
+        // Queue sizes sit on their tabs (shown only when something is waiting).
+        const n = x.value === 'pending' ? counts.pending : x.value === 'review' ? counts.needs_review : x.value === 'approval' ? counts.pending_approval : undefined;
+        return { value: x.value, label: x.label, count: n ? n : undefined };
+      })} />
       <SplitView
         panel={
           <SidePanel

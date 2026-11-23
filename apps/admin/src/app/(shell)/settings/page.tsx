@@ -3,7 +3,6 @@ import { Suspense, useState } from 'react';
 import { Alert, Button, Dialog, EmptyState, Field, IconButton, Select, Switch, Tabs, Textarea, toast } from '@24f/ui';
 import { usePageHeader } from '@/components/shell';
 import { ActionDialog, FilterSelect, Gate, KV, post, Section, Table, Toolbar, type ActionSpec } from '@/components/kit';
-import { Kpi } from '@/components/charts';
 import { api, ApiError } from '@/lib/api';
 import { reportError, useApi, useUrlState } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
@@ -11,6 +10,7 @@ import { dt } from '@/lib/fmt';
 
 interface Setting { key: string; value: unknown; value_type: string; description: string; source_ref: string; is_public: boolean; group: string; group_label: string; money: boolean; super_only: boolean; confirm_class: 'C1' | 'C2' | 'C3'; applies_to: string; rule: { type: string; min?: number; max?: number; enum?: string[]; list?: string; nullable?: boolean }; editable: boolean; updated_by: string | null; updated_at: string }
 interface Method { method_type: string; display_name: string; subtitle: string; account_label: string; account_regex: string; payout_currency: string; min_usd: string; max_per_request_usd: string; max_per_day_usd: string; fee_fixed_usd: string; fee_percent: string; quick_amounts_usd: string[]; eta_text: string; execution: string; treasury_system_code: string; enabled: boolean; feature_flag_on: boolean; requested_count: number; updated_by: string | null; updated_at: string }
+interface DepositMethod { channel: string; label: string; subtitle: string; group: string; currency: string; enabled: boolean; shown: boolean; hidden_reason: string | null; account: string; account_label: string; account_type: string | null; instructions: string; default_instructions: string; updated_by: string | null; updated_at: string | null }
 interface Rate { id: string; quote_currency: string; direction: string; rate: string; source: string; margin_percent: string; effective_from: string; created_by: string | null; note: string | null; change_percent: string | null }
 interface Current { quote_currency: string; direction: string; rate: string | null; source?: string; set_by?: string | null; age_hours?: number; state: string }
 
@@ -141,6 +141,44 @@ function Platform() {
   );
 }
 
+function DepositMethods() {
+  const { tick } = useSession();
+  const data = useApi<DepositMethod[]>('/admin/settings/deposit-methods', { t: tick });
+  const [spec, setSpec] = useState<ActionSpec | null>(null);
+  const write = data.meta?.editable === true;
+  const editSpec = (m: DepositMethod): ActionSpec => ({
+    title: `Edit ${m.label}`,
+    description: 'Changes show on Add funds right away. Deposits already submitted keep their details.',
+    confirm: 'Save changes',
+    width: 560,
+    hideOptional: true,
+    fields: [
+      { name: 'enabled', type: 'switch', label: 'Show this method', default: m.enabled },
+      { name: 'account', type: 'text', label: m.account_label, default: m.account, max: 64, helper: 'Where employers send money. Leave empty to hide this method.' },
+      ...(m.account_type !== null ? [{ name: 'account_type', type: 'select' as const, label: 'Account type', required: true, default: m.account_type || 'Personal number', options: [{ value: 'Personal number', label: 'Personal number' }, { value: 'Merchant number', label: 'Merchant number' }] }] : []),
+      { name: 'instructions', type: 'textarea', label: 'Instructions', default: m.instructions, max: 500, placeholder: m.default_instructions, helper: 'Shown above the form. Leave empty to use the default text.' },
+      { name: 'reason', type: 'textarea' as const, label: 'Reason', max: 500, helper: 'Kept in the audit log. Staff only.' },
+    ],
+    extra: (v) => (v.enabled && !String(v.account ?? '').trim() ? <Alert tone="warning">{m.label} stays hidden on Add funds until you add the {m.account_label}.</Alert> : null),
+    submit: (v) => api(`/admin/settings/deposit-methods/${m.channel}`, { method: 'PATCH', body: v }).then((r) => r.data),
+    success: 'Deposit method saved.',
+    onDone: data.reload,
+  });
+  if (data.error) return <Alert tone="danger">We couldn&apos;t load deposit methods.</Alert>;
+  return (
+    <div className="grid gap-4 desktop:grid-cols-2">
+      {data.loading && !data.data ? [...Array(4)].map((_, i) => <div key={i} className="h-48 animate-pulse rounded-card bg-muted" />) : null}
+      {(data.data ?? []).map((m) => (
+        <Section key={m.channel} title={`${m.label} · ${m.subtitle}`} actions={<span className="flex items-center gap-2"><span className={`rounded-full px-2 text-label-sm leading-6 ${m.shown ? 'bg-success-subtle text-fg-success' : 'bg-muted text-fg-secondary'}`}>{m.shown ? 'Shown' : 'Hidden'}</span>{write ? <span className="hidden laptop:inline"><Button size="S" variant="secondary" onClick={() => setSpec(editSpec(m))}>Edit</Button></span> : null}</span>}>
+          <KV cols={2} items={[[m.account_label, m.account ? <span key="a" className="adm-mono">{m.account}</span> : 'Not set'], ...(m.account_type !== null ? [['Account type', m.account_type || '—'] as [string, React.ReactNode]] : []), ['Employer pays in', m.currency], ['Show this method', m.enabled ? 'On' : 'Off'], ['Instructions', m.instructions || 'Default text'], ['Last changed', m.updated_at ? `${dt(m.updated_at)}${m.updated_by ? ` by ${m.updated_by}` : ''}` : '—']]} />
+          {m.hidden_reason ? <p className="mt-2 text-body-xs text-fg-tertiary">Hidden on Add funds: {m.hidden_reason}</p> : null}
+        </Section>
+      ))}
+      <ActionDialog spec={spec} onClose={() => setSpec(null)} />
+    </div>
+  );
+}
+
 function PayoutMethods() {
   const { can, tick } = useSession();
   const data = useApi<Method[]>('/admin/settings/payout-methods', { t: tick });
@@ -151,6 +189,7 @@ function PayoutMethods() {
     description: 'New quotes use these values. Withdrawals already requested keep theirs.',
     confirm: 'Save changes',
     width: 560,
+    hideOptional: true,
     fields: [
       { name: 'enabled', type: 'switch', label: 'Show this method', default: m.enabled },
       { name: 'min_usd', type: 'text', label: 'Minimum withdrawal, USD', default: m.min_usd, required: true },
@@ -162,7 +201,7 @@ function PayoutMethods() {
       { name: 'eta_text', type: 'text', label: 'Arrival text', default: m.eta_text, required: true, max: 80 },
       { name: 'execution', type: 'select', label: "How it's paid", default: m.execution, options: [{ value: 'manual', label: 'Manual' }, { value: 'api', label: 'API (needs a contracted provider)' }] },
       ...(m.method_type === 'usdt_trc20' && !m.enabled ? [{ name: 'legal_advice_on_file', type: 'checkbox' as const, label: 'Written legal advice is on file' }] : []),
-      { name: 'reason', type: 'textarea', label: 'Reason', required: true, max: 500, helper: 'Kept in the audit log. Staff only.' },
+      { name: 'reason', type: 'textarea' as const, label: 'Reason', max: 500, helper: 'Kept in the audit log. Staff only.' },
     ],
     extra: (v) => (
       <div className="space-y-2">
@@ -171,7 +210,7 @@ function PayoutMethods() {
       </div>
     ),
     submit: (v) => api(`/admin/settings/payout-methods/${m.method_type}`, { method: 'PATCH', body: { ...v, quick_amounts_usd: String(v.quick_amounts_usd).split(',').map((x) => x.trim()).filter(Boolean) } }).then((r) => r.data),
-    success: 'Payout method saved.',
+    success: 'Withdraw payment method saved.',
     onDone: data.reload,
   });
   return (
@@ -233,11 +272,6 @@ function Fx() {
   });
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 tablet:grid-cols-3">
-        {current.map((c) => (
-          <Kpi key={`${c.quote_currency}${c.direction}`} label={`USD → ${c.quote_currency} · ${c.direction}`} value={Number(c.rate ?? 0)} display={c.rate ? `1 USD = ${c.quote_currency === 'BDT' ? '৳' : ''}${c.rate}${c.quote_currency === 'USDT' ? ' USDT' : ''}` : '—'} tone={c.state === 'stale' ? 'danger' : undefined} sub={c.rate ? `${c.state === 'stale' ? 'Stale, blocking' : c.state === 'old' ? 'Getting old' : 'Current'} · ${c.age_hours} h old · ${c.source}${c.set_by ? ` · ${c.set_by}` : ''}` : 'No rate'} />
-        ))}
-      </div>
       <Toolbar actions={can('fx.write') ? <span className="hidden laptop:inline"><Button onClick={() => setSpec(addSpec())}>Add rate</Button></span> : null}>
         <FilterSelect label="Currency" value={u.get('cur')} onChange={(v) => u.set({ cur: v })} options={[{ value: '', label: 'Any currency' }, { value: 'BDT', label: 'BDT' }, { value: 'USDT', label: 'USDT' }]} />
         <FilterSelect label="Used for" value={u.get('dir')} onChange={(v) => u.set({ dir: v })} options={[{ value: '', label: 'Any' }, { value: 'payout', label: 'Payouts' }, { value: 'deposit', label: 'Deposits' }]} />
@@ -253,13 +287,14 @@ function Settings() {
   usePageHeader('Settings', 'Every change is logged with the old and new value.');
   const { can } = useSession();
   const u = useUrlState();
-  const tabs = [...(can('settings.read') ? [{ value: 'platform', label: 'Platform' }] : []), ...(can('payout_configs.read') ? [{ value: 'payout-methods', label: 'Payout methods' }, { value: 'fx', label: 'FX' }] : [])];
+  const tabs = [...(can('settings.read') ? [{ value: 'platform', label: 'Platform' }, { value: 'deposit-methods', label: 'Deposit methods' }] : []), ...(can('payout_configs.read') ? [{ value: 'payout-methods', label: 'Withdraw payment methods' }, { value: 'fx', label: 'Exchange rate' }] : [])];
   const tab = u.get('tab', tabs[0]?.value ?? 'platform');
   return (
     <Gate perms={['settings.read', 'payout_configs.read']}>
       <Tabs label="Settings" value={tab} panelId="set" className="mb-5" onChange={(v) => u.set({ tab: v, group: null })} tabs={tabs} />
       <div id="set">
         {tab === 'platform' ? <Platform /> : null}
+        {tab === 'deposit-methods' ? <DepositMethods /> : null}
         {tab === 'payout-methods' ? <PayoutMethods /> : null}
         {tab === 'fx' ? <Fx /> : null}
       </div>
