@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button, Dialog, OtpInput, toast } from '@24f/ui';
 import { api, ApiError, hasToken, onReauthRequired, onSessionExpired, refreshSession, setToken } from './api';
@@ -14,7 +14,7 @@ export interface Me {
   totp_enrolled: boolean;
   totp_required: boolean;
   reauth_needed: boolean;
-  session: { idle_minutes: number; last_active_at: string | null; expires_at: string | null };
+  session: { last_active_at: string | null; expires_at: string | null };
   app_env: string;
 }
 
@@ -50,9 +50,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [code, setCode] = useState('');
   const [codeErr, setCodeErr] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [idleWarn, setIdleWarn] = useState(false);
-  const [countdown, setCountdown] = useState(120);
-  const lastActivity = useRef(Date.now());
 
   const expire = useCallback(() => {
     setToken(null);
@@ -81,38 +78,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Idle warning 2 minutes before the server-side idle limit (Doc 09 §22.1).
-  useEffect(() => {
-    if (!me) return;
-    const mark = () => {
-      lastActivity.current = Date.now();
-    };
-    const evs = ['mousedown', 'keydown', 'touchstart'];
-    evs.forEach((e) => window.addEventListener(e, mark, { passive: true }));
-    const t = setInterval(() => {
-      const left = lastActivity.current + me.session.idle_minutes * 60_000 - Date.now();
-      if (left <= 0) expire();
-      else if (left <= 120_000) {
-        setIdleWarn(true);
-        setCountdown(Math.ceil(left / 1000));
-      }
-    }, 1000);
-    return () => {
-      clearInterval(t);
-      evs.forEach((e) => window.removeEventListener(e, mark));
-    };
-  }, [me, expire]);
-
-  const stay = async () => {
-    lastActivity.current = Date.now();
-    setIdleWarn(false);
-    try {
-      await api('/admin/me');
-    } catch {
-      /* expire handler redirects */
-    }
-  };
 
   const logout = useCallback(async () => {
     await signOut();
@@ -170,18 +135,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         <OtpInput value={code} onChange={setCode} onComplete={() => void submitReauth()} error={codeErr} autoFocus label="Authenticator code" />
         <p id="reauth-hint" className="sr-only">Enter all 6 digits.</p>
       </Dialog>
-      <Dialog
-        open={idleWarn}
-        onOpenChange={(o) => !o && void stay()}
-        title="Still there?"
-        description={`You'll be signed out in ${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, '0')} to protect this account.`}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => void logout()}>Sign out</Button>
-            <Button onClick={() => void stay()}>Stay signed in</Button>
-          </>
-        }
-      />
     </SessionCtx.Provider>
   );
 }

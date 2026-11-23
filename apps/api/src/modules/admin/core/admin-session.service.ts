@@ -5,7 +5,6 @@ import { RedisService } from '../../../common/redis.service';
 import { ApiError } from '../../../common/api-error';
 import { ADMIN_AUD, ADMIN_COOKIE_PATH, ADMIN_SETUP_AUD, adminEnv } from './admin-env';
 import { hashAdminToken, newOpaqueToken, signJwt, verifyJwt } from './admin-crypto';
-import { PRIVILEGED_ROLES } from './permissions';
 
 export interface AccessClaims {
   sub: string;
@@ -53,12 +52,6 @@ export class AdminSessionService {
     return p;
   }
 
-  async idleMinutesFor(adminId: string) {
-    const roles = await this.db.adminUserRole.findMany({ where: { adminUserId: adminId }, include: { adminRole: { select: { code: true } } } });
-    const env = adminEnv();
-    return roles.some((r) => PRIVILEGED_ROLES.has(r.adminRole.code)) ? env.idleMinutesPrivileged : env.idleMinutes;
-  }
-
   /** New sign-in. Caps concurrent families at ADMIN_MAX_SESSIONS (oldest revoked). */
   async create(adminId: string, ip: string | null, ua: string | null, opts: { reauth?: boolean } = {}) {
     const env = adminEnv();
@@ -82,7 +75,7 @@ export class AdminSessionService {
         userAgent: ua?.slice(0, 512) ?? null,
         lastActiveAt: now,
         reauthAt: opts.reauth ? now : null,
-        expiresAt: new Date(now.getTime() + env.maxHours * 3600_000),
+        expiresAt: new Date(now.getTime() + env.sessionDays * 86_400_000),
       },
     });
     return { session: s, refreshToken: raw };
@@ -110,7 +103,8 @@ export class AdminSessionService {
           userAgent: s.userAgent,
           lastActiveAt: s.lastActiveAt,
           reauthAt: s.reauthAt,
-          expiresAt: s.expiresAt,
+          // Sliding: every refresh pushes the end date forward, so a used session never ends.
+          expiresAt: new Date(Date.now() + adminEnv().sessionDays * 86_400_000),
         },
       });
     });
@@ -118,17 +112,15 @@ export class AdminSessionService {
     return { session: created, refreshToken: next };
   }
 
-  /** Idle and absolute limits (Doc 09 §22.1). Revokes and throws SESSION_EXPIRED when past either. */
+  /**
+   * No idle timeout: a session stays valid until sign-out or revocation. The far-off end date
+   * (sessionDays, pushed forward on every refresh) is only reached by a session left unused
+   * that long.
+   */
   async assertAlive(s: { id: string; familyId: string; adminUserId: string; lastActiveAt: Date; expiresAt: Date; revokedAt: Date | null }) {
     if (s.revokedAt) throw new ApiError('SESSION_EXPIRED');
-    const now = Date.now();
-    if (s.expiresAt.getTime() <= now) {
+    if (s.expiresAt.getTime() <= Date.now()) {
       await this.revokeFamily(s.familyId, 'absolute_timeout');
-      throw new ApiError('SESSION_EXPIRED');
-    }
-    const idle = await this.idleMinutesFor(s.adminUserId);
-    if (s.lastActiveAt.getTime() + idle * 60_000 <= now) {
-      await this.revokeFamily(s.familyId, 'idle_timeout');
       throw new ApiError('SESSION_EXPIRED');
     }
   }

@@ -18,9 +18,12 @@ export function adminEnv() {
   return {
     /** TOTP is disabled by default or when ADMIN_TOTP_REQUIRED=false */
     totpRequired: bool(e.ADMIN_TOTP_REQUIRED, false),
-    idleMinutes: int(e.ADMIN_SESSION_IDLE_MINUTES, 30),
-    idleMinutesPrivileged: int(e.ADMIN_SESSION_IDLE_MINUTES_PRIVILEGED, 15),
-    maxHours: int(e.ADMIN_SESSION_MAX_HOURS, 12),
+    /**
+     * Admin sessions don't expire on idle or after a fixed time: they last until sign-out. The
+     * refresh cookie still needs a date, so it is set this far ahead and pushed forward on every
+     * refresh (browsers cap cookies at about 400 days).
+     */
+    sessionDays: 400,
     reauthWindowMinutes: int(e.ADMIN_REAUTH_WINDOW_MINUTES, 10),
     accessTtlSeconds: int(e.ADMIN_ACCESS_TTL_SECONDS, 900),
     maxSessions: int(e.ADMIN_MAX_SESSIONS, 3),

@@ -246,7 +246,6 @@ export class AdminAuthService {
   async me(ctx: AdminCtx) {
     const env = adminEnv();
     const s = await this.db.adminSession.findUnique({ where: { id: ctx.sessionId } });
-    const idle = await this.sessions.idleMinutesFor(ctx.id);
     return {
       id: ctx.id,
       full_name: ctx.fullName,
@@ -257,7 +256,7 @@ export class AdminAuthService {
       totp_enrolled: ctx.totpEnrolled,
       totp_required: env.totpRequired,
       reauth_needed: env.totpRequired && ctx.totpEnrolled,
-      session: { idle_minutes: idle, last_active_at: s?.lastActiveAt.toISOString() ?? null, expires_at: s?.expiresAt.toISOString() ?? null },
+      session: { last_active_at: s?.lastActiveAt.toISOString() ?? null, expires_at: s?.expiresAt.toISOString() ?? null },
       app_env: getEnv().APP_ENV,
     };
   }
