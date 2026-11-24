@@ -222,6 +222,26 @@ export interface SubRow {
   unit_cost_usd: string;
   decision_source: 'employer' | 'auto' | 'admin' | null;
 }
+/** Submissions page, step 1: one row per job with per-status counters (in the date range). */
+export interface SubJobRow {
+  public_id: string;
+  title: string | null;
+  category: string | null;
+  status: JobStatus;
+  reward_usd: string | null;
+  slots_total: number;
+  approved_total: number;
+  counts: { to_review: number; approved: number; rejected: number; total: number };
+  last_submitted_at: string | null;
+  next_due_at: string | null;
+  auto_approve: boolean;
+  published_at: string | null;
+}
+export interface SubJobsMeta {
+  total: number;
+  range: '7d' | '15d' | '30d' | null;
+  totals: { to_review: number; approved: number; rejected: number; total: number; jobs_waiting: number };
+}
 export interface SubListMeta {
   total: number;
   per_page: number;
@@ -372,7 +392,8 @@ export const ek = {
   jobs: (tab: string, q: string, page: number) => ['employer', 'jobs', tab, q, page] as const,
   job: (id: string) => ['employer', 'job', id] as const,
   perf: (id: string) => ['employer', 'perf', id] as const,
-  subs: (job: string, tab: string) => ['employer', 'subs', job, tab] as const,
+  subs: (job: string, tab: string, range = '') => ['employer', 'subs', job, tab, range] as const,
+  subJobs: (range: string) => ['employer', 'subs', 'jobs', range] as const,
   sub: (ref: string) => ['employer', 'sub', ref] as const,
   wallet: ['employer', 'wallet'] as const,
   txns: (k: string) => ['employer', 'txns', k] as const,

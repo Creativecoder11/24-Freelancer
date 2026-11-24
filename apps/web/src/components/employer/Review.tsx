@@ -32,6 +32,7 @@ import { api, apiFetch, ApiError, ek, errorText, idemKey, invalidateEmployer, us
 import { useEmployerHeader } from './shell';
 import { ErrorPanel } from './common';
 import { RejectDialog, type RejectTarget } from './RejectDialog';
+import { SUB_RANGES, SubmissionJobs, readRange, rangeText, type SubRange } from './SubmissionJobs';
 
 type Tab = 'to_review' | 'approved' | 'rejected';
 const TABS: { value: Tab; label: string }[] = [
@@ -42,19 +43,29 @@ const TABS: { value: Tab; label: string }[] = [
 const hoursUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 3_600_000));
 const short = (t: string, n = 32) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
 
-/** SCR-EMP-09 Review submissions (Figma 40:1798, mobile 48:1336) + SCR-EMP-10 reject modal. */
+/**
+ * Submissions page. Step 1 (no `job`): every job with its submission counters and a date filter.
+ * Step 2 (`?job=`): that job's queue, detail and approve / reject.
+ */
 export function Review() {
+  const sp = useSearchParams();
+  const job = sp.get('job') ?? '';
+  return job ? <JobReview key={job} job={job} /> : <SubmissionJobs />;
+}
+
+/** SCR-EMP-09 Review submissions for one job (Figma 40:1798, mobile 48:1336) + SCR-EMP-10 reject modal. */
+function JobReview({ job }: { job: string }) {
   const router = useRouter();
   const sp = useSearchParams();
   const qc = useQueryClient();
   const twoPane = useMediaQuery('(min-width: 1024px)', true);
-  const job = sp.get('job') ?? '';
+  const range: SubRange = readRange(sp.get('range'));
   const tab: Tab = (['to_review', 'approved', 'rejected'] as const).includes(sp.get('tab') as Tab) ? (sp.get('tab') as Tab) : 'to_review';
   const subParam = sp.get('sub');
 
   const list = useInfiniteQuery({
-    queryKey: ek.subs(job, tab),
-    queryFn: ({ pageParam }) => apiFetch<SubRow[], SubListMeta>('/employer/submissions', { query: { job: job || undefined, tab, cursor: pageParam || undefined, per_page: 20 } }),
+    queryKey: ek.subs(job, tab, range),
+    queryFn: ({ pageParam }) => apiFetch<SubRow[], SubListMeta>('/employer/submissions', { query: { job: job || undefined, tab, range: range || undefined, cursor: pageParam || undefined, per_page: 20 } }),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.meta?.next_cursor ?? undefined,
   });
@@ -74,13 +85,15 @@ export function Review() {
     hideTabBar: !twoPane && tab === 'to_review' && rows.length > 0,
   });
 
-  const href = (p: Partial<{ job: string; tab: Tab; sub: string | null }>) => {
+  const href = (p: Partial<{ job: string; tab: Tab; sub: string | null; range: SubRange }>) => {
     const u = new URLSearchParams();
     const j = p.job ?? job;
     const t = p.tab ?? tab;
     const s = p.sub === undefined ? selected : p.sub;
+    const r = p.range ?? range;
     if (j) u.set('job', j);
     if (t !== 'to_review') u.set('tab', t);
+    if (r) u.set('range', r);
     if (s) u.set('sub', s);
     return `/employer/submissions${u.size ? `?${u}` : ''}`;
   };
@@ -88,7 +101,7 @@ export function Review() {
 
   // ------------------------------------------------------------ bulk selection
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  useEffect(() => setChecked(new Set()), [job, tab]);
+  useEffect(() => setChecked(new Set()), [job, tab, range]);
   const checkedRows = rows.filter((r) => checked.has(r.ref));
   const bulkTotal = checkedRows.reduce((s, r) => s + Number(r.unit_cost_usd), 0);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -142,8 +155,8 @@ export function Review() {
 
   // ------------------------------------------------------------ detail + reject
   const detail = useQuery({
-    queryKey: ek.sub(selected ?? ''),
-    queryFn: () => api.get<SubDetail>(`/employer/submissions/${selected}`, { query: { job: job || undefined, tab } }),
+    queryKey: [...ek.sub(selected ?? ''), tab, range],
+    queryFn: () => api.get<SubDetail>(`/employer/submissions/${selected}`, { query: { job: job || undefined, tab, range: range || undefined } }),
     enabled: !!selected,
   });
   const d = detail.data && detail.data.ref === selected ? detail.data : null;
@@ -174,9 +187,9 @@ export function Review() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, tab]);
+  }, [job, tab, range]);
 
-  const listRef = useStaggerIn<HTMLUListElement>([job, tab, list.data?.pages.length], { selector: '[data-row]' });
+  const listRef = useStaggerIn<HTMLUListElement>([job, tab, range, list.data?.pages.length], { selector: '[data-row]' });
   const detailRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!d || !detailRef.current || prefersReducedMotion()) return;
@@ -193,11 +206,7 @@ export function Review() {
     return () => io.disconnect();
   }, [list, rows.length]);
 
-  const jobOptions = [
-    { value: '', label: `All jobs (${meta?.job_options.reduce((n, j) => n + j.waiting, 0) ?? 0} waiting)` },
-    ...(meta?.job_options ?? []).map((j) => ({ value: j.public_id, label: `${short(j.title, 44)} (${j.waiting} waiting)` })),
-  ];
-  const noJobs = meta && meta.job_options.length === 0;
+  const backHref = `/employer/submissions${range ? `?range=${range}` : ''}`;
   const pos = d?.pager.position ?? null;
 
   const detailPane = !selected ? null : detail.isError ? (
@@ -241,12 +250,23 @@ export function Review() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 laptop:grid-cols-[minmax(0,400px)_minmax(0,1fr)] laptop:items-end laptop:gap-6">
-        <div className={cn(!twoPane && 'max-tablet:hidden')}>
-          <Select label="Job" options={jobOptions} value={job} onChange={(v) => router.replace(href({ job: v, sub: null }), { scroll: false })} searchable={jobOptions.length > 8} />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Button variant="secondary" size="S" leadingIcon="arrow-left" href={backHref}>
+          All jobs
+        </Button>
+        <p className="min-w-0 flex-1 truncate text-label-md text-fg max-tablet:hidden">{header?.job_title ?? ''}</p>
+        <div className="w-[200px]">
+          <Select
+            label="Submitted"
+            labelHidden
+            compact={{ inlineLabel: 'Submitted:' }}
+            options={SUB_RANGES.map((r) => ({ value: r.value || 'all', label: r.label }))}
+            value={range || 'all'}
+            onChange={(v) => router.replace(href({ range: v === 'all' ? '' : (v as SubRange), sub: null }), { scroll: false })}
+          />
         </div>
-        <Tabs label="Submission status" panelId="rev-panel" value={tab} tabs={TABS.map((t) => ({ ...t, count: meta?.counts[t.value] }))} hrefFor={(t) => href({ tab: t, sub: null })} />
       </div>
+      <Tabs label="Submission status" panelId="rev-panel" value={tab} tabs={TABS.map((t) => ({ ...t, count: meta?.counts[t.value] }))} hrefFor={(t) => href({ tab: t, sub: null })} />
 
       <TabPanel id="rev-panel" className="mt-6">
         {list.isError ? (
@@ -256,16 +276,12 @@ export function Review() {
             <Skeleton height={480} radius={16} />
             <Skeleton height={480} radius={16} className="max-laptop:hidden" />
           </div>
-        ) : noJobs ? (
-          <div className="rounded-card border border-line bg-surface">
-            <EmptyState icon="inbox" title="Nothing to review yet" body="Submissions appear here once you publish a job." action={<Button href="/employer/jobs/new">Post a job</Button>} />
-          </div>
         ) : !rows.length ? (
           <div className="rounded-card border border-line bg-surface">
             {tab === 'to_review' ? (
-              <EmptyState icon="check-circle" title="All caught up" body="No submissions are waiting for your review." action={<Button variant="secondary" href="/employer/jobs">View my jobs</Button>} />
+              <EmptyState icon="check-circle" title="All caught up" body={range ? `Nothing waiting from the ${rangeText(range)}.` : 'No submissions are waiting for your review on this job.'} action={<Button variant="secondary" href={backHref}>Back to all jobs</Button>} />
             ) : (
-              <EmptyState compact icon="inbox" title={tab === 'approved' ? 'No approved submissions yet.' : 'No rejected submissions.'} />
+              <EmptyState compact icon="inbox" title={tab === 'approved' ? `No approved submissions${range ? ` in the ${rangeText(range)}` : ' yet'}.` : `No rejected submissions${range ? ` in the ${rangeText(range)}` : ''}.`} />
             )}
           </div>
         ) : (

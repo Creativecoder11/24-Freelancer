@@ -18,6 +18,14 @@ const REASON_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
+/** Submission-date filter for the Submissions page: submitted in the last N days. */
+export const SUB_RANGES = ['7d', '15d', '30d'] as const;
+export type SubRange = (typeof SUB_RANGES)[number];
+function rangeFilter(range?: string): Prisma.SubmissionWhereInput {
+  if (!range || !(SUB_RANGES as readonly string[]).includes(range)) return {};
+  return { lastSubmittedAt: { gte: new Date(Date.now() - Number(range.replace('d', '')) * 86_400_000) } };
+}
+
 const TAB_STATUS: Record<string, Prisma.SubmissionWhereInput> = {
   to_review: { status: 'in_review' },
   approved: { status: 'approved' },
@@ -53,7 +61,57 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------------- queue
 
-  async list(employerId: string, q: { job?: string; tab: string; cursor?: string; per_page: number }) {
+  /**
+   * Submissions page, step 1: every job that has submissions (in the date range) or is live, with
+   * per-status counters. Jobs with work waiting come first, then the most recent submission.
+   */
+  async jobsOverview(employerId: string, q: { range?: string }) {
+    const inRange = rangeFilter(q.range);
+    const [byStatus, last] = await Promise.all([
+      this.db.submission.groupBy({ by: ['jobId', 'status'], where: { employerUserId: employerId, ...inRange }, _count: true }),
+      this.db.submission.groupBy({ by: ['jobId'], where: { employerUserId: employerId, ...inRange }, _max: { lastSubmittedAt: true }, _min: { reviewDueAt: true } }),
+    ]);
+    const withSubs = [...new Set(byStatus.map((g) => g.jobId))];
+    const jobs = await this.db.job.findMany({
+      where: {
+        employerUserId: employerId,
+        deletedAt: null,
+        // A date filter shows only jobs with submissions in that period; "any time" also lists live jobs.
+        ...(q.range ? { id: { in: withSubs } } : { OR: [{ id: { in: withSubs } }, { status: { in: ['running', 'paused'] } }] }),
+      },
+      select: { id: true, publicId: true, title: true, status: true, slotsTotal: true, countApproved: true, rewardUsd: true, autoApprove: true, publishedAt: true, category: { select: { name: true } } },
+    });
+    const n = (jobId: string, statuses: string[]) => byStatus.filter((g) => g.jobId === jobId && statuses.includes(g.status)).reduce((s, g) => s + g._count, 0);
+    const rows = jobs.map((j) => {
+      const l = last.find((x) => x.jobId === j.id);
+      const toReview = n(j.id, ['in_review']);
+      return {
+        public_id: j.publicId,
+        title: j.title,
+        category: j.category?.name ?? null,
+        status: j.status,
+        reward_usd: j.rewardUsd ? usd3(j.rewardUsd) : null,
+        slots_total: j.slotsTotal ?? 0,
+        approved_total: j.countApproved,
+        counts: { to_review: toReview, approved: n(j.id, ['approved']), rejected: n(j.id, ['needs_fix', 'rejected']), total: n(j.id, ['in_review', 'approved', 'needs_fix', 'rejected']) },
+        last_submitted_at: l?._max.lastSubmittedAt?.toISOString() ?? null,
+        next_due_at: toReview ? (l?._min.reviewDueAt?.toISOString() ?? null) : null,
+        auto_approve: j.autoApprove,
+        published_at: j.publishedAt?.toISOString() ?? null,
+      };
+    });
+    rows.sort((a, b) => b.counts.to_review - a.counts.to_review || (b.last_submitted_at ?? b.published_at ?? '').localeCompare(a.last_submitted_at ?? a.published_at ?? ''));
+    const sum = (k: 'to_review' | 'approved' | 'rejected' | 'total') => rows.reduce((s, r) => s + r.counts[k], 0);
+    return new Paged(rows, {
+      total: rows.length,
+      per_page: rows.length,
+      has_more: false,
+      range: q.range && (SUB_RANGES as readonly string[]).includes(q.range) ? q.range : null,
+      totals: { to_review: sum('to_review'), approved: sum('approved'), rejected: sum('rejected'), total: sum('total'), jobs_waiting: rows.filter((r) => r.counts.to_review > 0).length },
+    });
+  }
+
+  async list(employerId: string, q: { job?: string; tab: string; cursor?: string; per_page: number; range?: string }) {
     const tab = TAB_STATUS[q.tab] ? q.tab : 'to_review';
     let jobFilter: Prisma.SubmissionWhereInput = {};
     let job: { id: string; title: string; autoApprove: boolean; publicId: string } | null = null;
@@ -62,7 +120,7 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
       if (!job) throw new ApiError('NOT_FOUND', "We can't find that job.");
       jobFilter = { jobId: job.id };
     }
-    const base: Prisma.SubmissionWhereInput = { employerUserId: employerId, ...jobFilter };
+    const base: Prisma.SubmissionWhereInput = { employerUserId: employerId, ...jobFilter, ...rangeFilter(q.range) };
     const where = { ...base, ...TAB_STATUS[tab] };
     const offset = decodeCursor(q.cursor);
     const [total, rows, grouped, waitingByJob] = await Promise.all([
@@ -137,7 +195,7 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async detail(employerId: string, ref: string, q: { job?: string; tab?: string }) {
+  async detail(employerId: string, ref: string, q: { job?: string; tab?: string; range?: string }) {
     const s = await this.db.submission.findFirst({
       where: { publicRef: ref, employerUserId: employerId },
       include: {
@@ -160,7 +218,7 @@ export class ReviewService implements OnModuleInit, OnModuleDestroy {
     if (!s) throw new ApiError('NOT_FOUND', "We can't find that submission.");
     // Pager position inside the same tab and job filter.
     const tab = q.tab && TAB_STATUS[q.tab] ? q.tab : s.status === 'in_review' ? 'to_review' : s.status === 'approved' ? 'approved' : 'rejected';
-    const pagerWhere: Prisma.SubmissionWhereInput = { employerUserId: employerId, ...TAB_STATUS[tab] };
+    const pagerWhere: Prisma.SubmissionWhereInput = { employerUserId: employerId, ...TAB_STATUS[tab], ...rangeFilter(q.range) };
     if (q.job) pagerWhere.job = { publicId: q.job };
     const ordered = await this.db.submission.findMany({
       where: pagerWhere,

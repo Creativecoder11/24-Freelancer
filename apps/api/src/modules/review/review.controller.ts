@@ -14,8 +14,10 @@ const listQuery = z.object({
   tab: z.enum(['to_review', 'approved', 'rejected']).optional().default('to_review'),
   cursor: z.string().max(200).optional(),
   per_page: queryPerPage(20),
+  range: z.enum(['7d', '15d', '30d']).optional(),
 });
-const detailQuery = z.object({ job: z.string().max(12).optional(), tab: z.string().max(20).optional() });
+const detailQuery = z.object({ job: z.string().max(12).optional(), tab: z.string().max(20).optional(), range: z.enum(['7d', '15d', '30d']).optional() });
+const jobsQuery = z.object({ range: z.enum(['7d', '15d', '30d']).optional() });
 const rejectBody = z.object({
   reason_code: z.enum(['proof_incomplete', 'steps_not_followed', 'wrong_or_copied', 'link_not_accessible', 'other'], {
     errorMap: () => ({ message: 'Choose a reason.' }),
@@ -41,6 +43,12 @@ export class ReviewController {
   @Get()
   list(@CurrentUser('id') uid: string, @Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>) {
     return this.review.list(uid, q);
+  }
+
+  /** Submissions page, step 1: jobs with per-status submission counters (declared before `:ref`). */
+  @Get('jobs')
+  jobs(@CurrentUser('id') uid: string, @Query(new ZodPipe(jobsQuery)) q: z.infer<typeof jobsQuery>) {
+    return this.review.jobsOverview(uid, q);
   }
 
   @Post('bulk-approve')

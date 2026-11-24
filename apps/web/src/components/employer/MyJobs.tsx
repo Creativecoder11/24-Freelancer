@@ -122,9 +122,16 @@ export function MyJobs() {
                         </p>
                         <Progress className="mt-1.5 max-w-[140px]" size={4} tone="success" value={j.approved} max={Math.max(1, j.slots_total)} valueText={`${j.approved} of ${j.slots_total} approved`} />
                       </td>
-                      <td className="px-3 py-4 max-desktop:hidden">
+                      <td className="relative z-[1] px-3 py-4 max-desktop:hidden">
                         {j.to_review > 0 ? (
-                          <span className="inline-flex h-7 min-w-[64px] items-center justify-center rounded-full bg-warning-subtle px-3 text-label-sm font-semibold text-fg-warning">{j.to_review}</span>
+                          <NextLink
+                            href={`/employer/submissions?job=${j.public_id}`}
+                            aria-label={`Review ${j.to_review} ${j.to_review === 1 ? 'submission' : 'submissions'} for ${j.title ?? 'this job'}`}
+                            className="inline-flex h-8 min-w-[64px] items-center justify-center gap-1 rounded-full bg-warning-subtle px-3 text-label-sm font-semibold text-fg-warning ring-1 ring-inset ring-transparent transition-shadow hover:ring-[var(--fl-border-warning)] focus-visible:shadow-focus focus-visible:outline-none"
+                          >
+                            {j.to_review}
+                            <span className="font-normal">· Review</span>
+                          </NextLink>
                         ) : (
                           <span className="inline-block min-w-[64px] text-center text-fg-tertiary">—</span>
                         )}
@@ -177,7 +184,11 @@ export function MyJobs() {
                   <Progress className="mt-2" size={4} tone="success" value={j.approved} max={Math.max(1, j.slots_total)} valueText={`${j.approved} of ${j.slots_total} approved`} />
                   <div className="mt-3 flex items-center justify-between text-body-xs text-fg-tertiary">
                     <span>{endsCell(j)}</span>
-                    {j.to_review > 0 ? <span className="rounded-full bg-warning-subtle px-2 py-0.5 font-semibold text-fg-warning">{j.to_review} to review</span> : null}
+                    {j.to_review > 0 ? (
+                      <NextLink href={`/employer/submissions?job=${j.public_id}`} className="relative z-[1] rounded-full bg-warning-subtle px-2.5 py-1 font-semibold text-fg-warning focus-visible:shadow-focus focus-visible:outline-none">
+                        Review {j.to_review}
+                      </NextLink>
+                    ) : null}
                   </div>
                   {canPromote(j) ? (
                     <Button size="S" variant="secondary" leadingIcon="trending-up" onClick={() => actions.open('promote', j)} className="relative z-[1] mt-3 w-full">
