@@ -36,15 +36,17 @@ function FilterMenu({
         aria-controls={open ? id : undefined}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border pl-4 pr-3 text-label-md transition-colors duration-[120ms] focus-visible:shadow-focus focus-visible:outline-none',
+          'inline-flex h-10 min-w-0 shrink-0 items-center justify-between gap-1.5 whitespace-nowrap rounded-full border pl-4 pr-3 text-label-md transition-colors duration-[120ms] focus-visible:shadow-focus focus-visible:outline-none tablet:justify-start',
           active ? 'border-line-brand bg-brand-subtle text-fg-brand' : 'border-line bg-surface text-fg hover:border-line-strong',
         )}
       >
-        {label}
-        {count ? (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-label-sm text-fg-on-brand">{count}</span>
-        ) : null}
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{label}</span>
+          {count ? (
+            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-label-sm text-fg-on-brand">{count}</span>
+          ) : null}
+        </span>
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} className="shrink-0" />
       </button>
       <Popover open={open} onOpenChange={setOpen} anchorRef={ref} id={id} role="dialog" aria-label={`${label} filter`} className="w-[280px]">
         <div className="max-h-[360px] overflow-y-auto p-4">{children}</div>
@@ -98,7 +100,8 @@ export function BrowseFilters({ applied, categories, facets }: { applied: Browse
       <div
         role="group"
         aria-label="Filters"
-        className="-mx-5 flex shrink-0 items-center gap-2 overflow-x-auto px-5 py-1 [scrollbar-width:none] tablet:mx-0 tablet:flex-wrap tablet:overflow-visible tablet:px-0 desktop:order-1 desktop:flex-nowrap [&::-webkit-scrollbar]:hidden"
+        // Phone: 2×2 grid of full-width pills (nothing runs off-screen). Tablet+: one row.
+        className="grid shrink-0 grid-cols-2 gap-2 tablet:flex tablet:flex-wrap tablet:items-center desktop:order-1 desktop:flex-nowrap"
       >
         <span className="mr-1 hidden items-center gap-1.5 text-label-md text-fg-secondary tablet:inline-flex">
           <Icon name="filter" size={16} /> Filter
@@ -146,7 +149,7 @@ export function BrowseFilters({ applied, categories, facets }: { applied: Browse
           <button
             type="button"
             onClick={() => go({ category: [], reward_min: null, time: [], proof: [] })}
-            className="ml-1 shrink-0 whitespace-nowrap rounded-[6px] text-label-md text-fg-brand hover:underline focus-visible:shadow-focus focus-visible:outline-none"
+            className="col-span-2 ml-1 shrink-0 justify-self-end whitespace-nowrap rounded-[6px] text-label-md text-fg-brand hover:underline focus-visible:shadow-focus focus-visible:outline-none"
           >
             Clear all
           </button>

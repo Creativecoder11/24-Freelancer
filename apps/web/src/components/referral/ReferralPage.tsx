@@ -72,7 +72,7 @@ export function ReferralPage() {
               ))}
             </div>
           ) : s.top_friends.length === 0 ? (
-            <EmptyState compact icon="users" title="No friends yet" body="Share your link. You earn 5% when they complete tasks or make deposits." action={<Button size="S" onClick={() => copyInvite(s.link)}>Copy link</Button>} />
+            <EmptyState compact icon="users" title="No friends yet" body="Share your link. You earn 5% of their approved task rewards, starting from their first task." action={<Button size="S" onClick={() => copyInvite(s.link)}>Copy link</Button>} />
           ) : (
             <ul className="mt-2 divide-y divide-line-subtle">
               {s.top_friends.map((f) => (
@@ -100,7 +100,7 @@ export function ReferralPage() {
                 ))}
               </dl>
               <p className="mt-4 border-t border-line-subtle pt-4 text-body-xs text-fg-tertiary">
-                Commission: {s.rate_label} of approved task rewards and {s.rate_label} of deposits. Self-referrals and duplicate accounts don’t earn commission.
+                Commission: {s.rate_label} of approved task rewards, starting from your friend’s first task. Self-referrals and duplicate accounts don’t earn commission.
               </p>
             </>
           ) : (
@@ -133,10 +133,10 @@ function Hero({ s }: { s: ReferralSummary }) {
           Your referral program
         </p>
         <h2 data-hero id="ref-hero" className="mt-3 font-display text-h2 text-fg-inverse">
-          Earn {s.rate_label} from every friend you invite
+          Invite friends. Earn {s.rate_label} of what they earn.
         </h2>
         <p data-hero className="mt-4 max-w-[440px] text-body-lg text-fg-inverse-secondary">
-          {s.rate_label} of their completed tasks and {s.rate_label} of their deposits — added to your balance automatically.
+          From your friend’s first completed task, you get {s.rate_label} commission on every approved task reward they earn — added to your balance automatically.
         </p>
       </div>
       <div data-hero className="min-w-0">
@@ -173,8 +173,8 @@ function Hero({ s }: { s: ReferralSummary }) {
 function HowItWorks({ pct }: { pct: string }) {
   const steps = [
     ['Share your link', 'Send it to friends, or post it where people look for online work.'],
-    ['They sign up and start', 'Your code is filled in for them. They earn exactly what they would without it.'],
-    [`You earn ${pct}`, 'On each approved task and each deposit, straight into your balance.'],
+    ['They complete their first task', 'Your code is filled in for them. Commission starts once their first task is approved.'],
+    [`You earn ${pct}`, 'Of every approved task reward they earn, straight into your balance.'],
   ];
   return (
     <section aria-labelledby="how" className="rounded-card border border-line bg-surface p-5 shadow-xs tablet:p-7">

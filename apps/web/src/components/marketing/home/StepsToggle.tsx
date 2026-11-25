@@ -29,7 +29,7 @@ export function StepsToggle() {
   );
   return (
     <>
-      <div className="mt-6 flex flex-col gap-6 tablet:flex-row tablet:items-end tablet:justify-between desktop:-mt-12 desktop:justify-end">
+      <div className="mt-6 flex justify-center desktop:-mt-12 desktop:justify-end">
         <SegmentedControl
           label="Audience"
           kind="tabs"
@@ -39,7 +39,8 @@ export function StepsToggle() {
             { value: 'earn', label: 'I want to earn' },
             { value: 'hire', label: 'I want to hire' },
           ]}
-          className="w-[280px]"
+          className="w-full max-w-[360px] tablet:w-[300px]"
+          fullWidth
         />
       </div>
       <div ref={grid} className="mt-10 grid gap-6 tablet:grid-cols-2 desktop:grid-cols-4">

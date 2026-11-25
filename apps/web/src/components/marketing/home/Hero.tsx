@@ -56,8 +56,8 @@ export function Hero({ heroJob }: { heroJob?: JobCardData }) {
   return (
     <section ref={scope} className="mx-auto grid max-w-container gap-12 px-5 pb-16 pt-10 tablet:px-8 desktop:grid-cols-[560px_600px] desktop:justify-between desktop:gap-10 desktop:px-0 desktop:pb-12 desktop:pt-[72px]">
       <div data-hero className="relative desktop:pt-10">
-        <p className="hero-eyebrow font-hand text-hand-note text-fg-brand">small and tasks, honest pay — that’s the whole idea</p>
-        <h1 className="mt-3 font-display text-[44px] font-extrabold leading-[52px] tracking-[-1.3px] text-fg tablet:text-display-xl desktop:text-display-2xl">
+        <p className="hero-eyebrow font-hand text-hand-sm text-fg-brand tablet:text-hand-note">small tasks, honest pay — that’s the whole idea</p>
+        <h1 className="mt-3 font-display text-[36px] font-extrabold leading-[44px] md:leading-[62px] tracking-[-1.2px] text-fg tablet:text-display-xl desktop:text-display-2xl">
           {[['Turn', 'spare', 'minutes'], ['into', 'verified']].map((line, li) => (
             <span key={li} className="desktop:block">
               {line.map((w) => (
@@ -82,26 +82,21 @@ export function Hero({ heroJob }: { heroJob?: JobCardData }) {
             Post a job
           </Button>
         </div>
-        <div className="hero-note mt-5 flex items-start gap-2 pl-10 text-fg-brand">
-          <HandArrow className="h-10 w-20 -scale-y-100 text-fg-brand" />
-          <p className="mt-6 font-hand text-hand-sm">no sign-up needed to browse</p>
+        <div className="hero-note mt-5 flex items-start gap-2 pl-4 text-fg-brand tablet:pl-10">
+          <HandArrow className="h-10 w-20 shrink-0 -scale-y-100 text-fg-brand" />
+          <p className="mt-6 font-hand text-hand-sm">sign up free — start earning today</p>
         </div>
       </div>
 
-      <div data-hero className="hero-panel relative mx-auto h-[600px] w-full max-w-[600px] overflow-hidden rounded-[32px] bg-muted tablet:h-[656px] desktop:overflow-visible">
-        <div className="hero-job absolute left-5 top-8 w-[calc(100%-40px)] max-w-[352px] tablet:left-10 tablet:top-10">
+      {/* Phone: cards stack in story order, no overlap. Tablet+: the layered Figma composition. */}
+      <div data-hero className="hero-panel relative mx-auto flex w-full max-w-[600px] flex-col gap-4 overflow-hidden rounded-[32px] bg-muted p-4 tablet:block tablet:h-[656px] tablet:p-0 desktop:overflow-visible">
+        <div className="hero-job w-full tablet:absolute tablet:left-10 tablet:top-10 tablet:max-w-[352px]">
           <JobCard job={job} href={`/jobs/${job.publicId}`} className="shadow-lg" />
-        </div>
-        <div className="hero-toast absolute right-5 top-4 flex w-[190px] items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-2.5 shadow-lg tablet:right-6 tablet:top-6">
-          <div>
-            <p className="text-label-sm text-fg">Withdrawal paid</p>
-            <p className="text-body-xs text-fg-tertiary">$10.00 · just now</p>
-          </div>
         </div>
         <p className="hero-stamp-note absolute right-8 top-[300px] hidden rotate-[-4deg] text-center font-hand text-hand-sm text-fg-brand tablet:block">
           every step gets a<br />time-stamp
         </p>
-        <div className="hero-submission absolute bottom-24 left-5 right-5 rounded-card border border-line bg-surface p-5 shadow-lg tablet:left-10 tablet:right-10">
+        <div className="hero-submission rounded-card border border-line bg-surface p-5 shadow-lg tablet:absolute tablet:bottom-24 tablet:left-10 tablet:right-10">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-label-md text-fg">Your submission</p>
@@ -119,8 +114,14 @@ export function Hero({ heroJob }: { heroJob?: JobCardData }) {
             ]}
           />
         </div>
-        <div className="hero-chip absolute bottom-8 right-6 rounded-full bg-success-bright px-4 py-2 text-label-md text-fg-inverse shadow-md tablet:right-10">
+        <div className="hero-chip self-end rounded-full bg-success-bright px-4 py-2 text-label-md text-fg-inverse shadow-md tablet:absolute tablet:bottom-8 tablet:right-10">
           +$0.180 added to your balance
+        </div>
+        <div className="hero-toast flex w-[190px] items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-2.5 shadow-lg tablet:absolute tablet:right-6 tablet:top-6">
+          <div>
+            <p className="text-label-sm text-fg">Withdrawal paid</p>
+            <p className="text-body-xs text-fg-tertiary">$10.00 · just now</p>
+          </div>
         </div>
       </div>
     </section>

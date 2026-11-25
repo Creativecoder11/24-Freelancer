@@ -75,7 +75,7 @@ export function FriendsPage() {
               {counts?.all ? (
                 <EmptyState compact icon="users" title="No friends in this list." />
               ) : (
-                <EmptyState icon="users" title="No friends yet" body="Share your link. You earn 5% when they complete tasks or make deposits." action={<CopyLinkButton />} />
+                <EmptyState icon="users" title="No friends yet" body="Share your link. You earn 5% of their approved task rewards, starting from their first task." action={<CopyLinkButton />} />
               )}
             </div>
           ) : (
@@ -149,7 +149,7 @@ export function FriendsPage() {
             </div>
           )}
         </div>
-        <p className="text-body-sm text-fg-secondary">Commission: 5% of approved task rewards and 5% of deposits.</p>
+        <p className="text-body-sm text-fg-secondary">Commission: 5% of approved task rewards, starting from your friend’s first task.</p>
         {list.data && list.data.meta.total_pages > 1 ? (
           <Pagination page={page} totalPages={list.data.meta.total_pages} total={list.data.meta.total} perPage={10} itemLabel="friends" hrefFor={(p) => `${pathname}?${new URLSearchParams({ ...(tab !== 'all' ? { tab } : {}), page: String(p) })}`} />
         ) : null}

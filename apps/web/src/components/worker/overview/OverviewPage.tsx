@@ -4,7 +4,7 @@ import NextLink from 'next/link';
 import { useEffect, useState } from 'react';
 import type { WorkerOverview } from '@24f/shared';
 import { formatMoney, formatRelative, formatReward, formatHoursLeft } from '@24f/shared';
-import { Alert, Button, EmptyState, Icon, JobRow, Link, Skeleton, StatCard, StatusBadge, TaskRow, cn, useStaggerIn } from '@24f/ui';
+import { Alert, Button, EmptyState, JobRow, Link, Skeleton, StatCard, StatusBadge, TaskRow, cn, useStaggerIn } from '@24f/ui';
 import { toRowData } from '@/lib/jobs';
 import { useOverview } from '../data';
 import { useWorkerHeader } from '../shell';
@@ -294,17 +294,11 @@ function Nudges({ o }: { o: WorkerOverview }) {
           key={n.key}
           tone="info"
           title={n.title}
+          onDismiss={n.key.startsWith('res-') ? undefined : () => dismiss(n.key)}
           action={
-            <div className="flex items-center gap-2">
-              <Button size="S" variant="secondary" href={n.href}>
-                {n.cta}
-              </Button>
-              {!n.key.startsWith('res-') ? (
-                <button type="button" aria-label="Dismiss" onClick={() => dismiss(n.key)} className="grid size-9 place-items-center rounded-[8px] text-fg-tertiary hover:bg-surface focus-visible:shadow-focus focus-visible:outline-none">
-                  <Icon name="x" size={16} />
-                </button>
-              ) : null}
-            </div>
+            <Button size="S" variant="secondary" href={n.href}>
+              {n.cta}
+            </Button>
           }
         >
           {n.body}

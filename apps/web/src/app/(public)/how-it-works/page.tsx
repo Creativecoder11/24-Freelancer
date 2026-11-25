@@ -115,17 +115,18 @@ export default async function HowItWorksPage() {
       <section className="mx-auto mb-24 mt-24 max-w-container px-5 tablet:px-8 desktop:px-0">
         <div
           data-reveal
-          className="flex flex-col gap-8 overflow-hidden rounded-2xl bg-inverse px-8 py-10 tablet:flex-row tablet:items-center tablet:justify-between tablet:px-12 desktop:min-h-[180px]"
+          className="flex flex-col gap-8 overflow-hidden rounded-2xl bg-inverse px-6 py-10 tablet:flex-row tablet:items-center tablet:justify-between tablet:px-12 desktop:min-h-[180px]"
         >
           <div>
             <h2 className="font-display text-[28px] font-bold leading-9 text-fg-inverse">Ready to try your first task?</h2>
             <p className="mt-2 text-body-md text-fg-inverse-secondary">It’s free to join. Pick a job that fits the time you have.</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button href="/jobs" size="L" className="min-w-[168px]">
+          {/* Phone: two equal buttons side by side. Tablet+: natural widths. */}
+          <div className="grid grid-cols-2 gap-3 tablet:flex tablet:shrink-0 tablet:flex-wrap">
+            <Button href="/jobs" size="L" className="!min-w-0 !px-3 tablet:!min-w-[168px] tablet:!px-5">
               Find jobs
             </Button>
-            <Button href="/signup?role=employer" size="L" variant="secondary" className="min-w-[160px]">
+            <Button href="/signup?role=employer" size="L" variant="secondary" className="!min-w-0 !px-3 tablet:!min-w-[160px] tablet:!px-5">
               Post a job
             </Button>
           </div>

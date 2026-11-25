@@ -182,9 +182,9 @@ export function ReferralBand({ rate }: { rate: number }) {
       <div data-reveal className="grid gap-10 overflow-hidden rounded-[28px] bg-inverse p-8 tablet:p-12 desktop:grid-cols-[1fr_456px] desktop:items-center">
         <div>
           <p className="text-overline uppercase text-fg-brand-inverse">Referral program</p>
-          <h2 className="mt-3 font-display text-[28px] font-bold leading-9 text-fg-inverse tablet:text-h2">Invite friends. Earn {pct}% of what they do.</h2>
+          <h2 className="mt-3 font-display text-[28px] font-bold leading-9 text-fg-inverse tablet:text-h2">Invite friends. Earn {pct}% of what they earn.</h2>
           <p className="mt-4 max-w-[520px] text-body-md text-fg-inverse-secondary">
-            Get {pct}% of every task your referrals complete and {pct}% of every deposit they make — added to your balance automatically.
+            From the moment your friend completes their first task, you get {pct}% commission on every approved task reward they earn — added to your balance automatically.
           </p>
           <Button href="/referral-program" size="L" className="mt-8 min-w-[216px]">
             Get your invite link
@@ -192,16 +192,16 @@ export function ReferralBand({ rate }: { rate: number }) {
         </div>
         <div data-reveal-group className="space-y-4">
           {[
-            ['Friend completes tasks worth', 10, 10 * rate],
-            ['Friend deposits', 20, 20 * rate],
+            ['Friend’s first task approved', 0.4, 0.4 * rate],
+            ['Friend earns from tasks', 10, 10 * rate],
           ].map(([label, base, earn]) => (
             <div data-reveal-item key={label as string} className="flex items-center justify-between gap-4 rounded-card bg-inverse-raised px-5 py-4">
-              <div>
+              <div className="min-w-0">
                 <p className="text-body-xs text-fg-inverse-secondary">{label}</p>
                 <p className="font-display text-num-md text-fg-inverse">${(base as number).toFixed(2)}</p>
               </div>
-              <Icon name="arrow-right" size={20} className="text-fg-inverse-secondary" />
-              <div className="text-right">
+              <Icon name="arrow-right" size={20} className="shrink-0 text-fg-inverse-secondary" />
+              <div className="shrink-0 whitespace-nowrap text-right">
                 <p className="text-body-xs text-fg-inverse-secondary">You earn</p>
                 <p className="font-display text-num-md text-fg-money-bright" data-count={(earn as number).toFixed(2)} data-prefix="$" data-decimals="2">
                   ${(earn as number).toFixed(2)}
@@ -238,17 +238,18 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
 export function FinalCta() {
   return (
     <section className="mx-auto max-w-container px-5 tablet:px-8 desktop:px-0">
-      <div data-reveal className="relative grid items-center gap-8 overflow-hidden rounded-[28px] border border-line bg-surface p-8 tablet:p-12 desktop:grid-cols-[1fr_260px]">
+      <div data-reveal className="relative grid items-center gap-8 overflow-hidden rounded-[28px] border border-line bg-surface p-6 tablet:p-12 desktop:grid-cols-[1fr_260px]">
         <div>
           <h2 className="font-display text-[28px] font-bold leading-9 text-fg tablet:text-h2">Start with one small task today.</h2>
           <p className="mt-3 max-w-[560px] text-body-md text-fg-secondary">
             Create a free account, pick a job that fits your time and follow it all the way to your balance.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button href="/jobs" size="L" className="min-w-[168px]">
+          {/* Phone: two equal buttons side by side. Tablet+: natural widths. */}
+          <div className="mt-8 grid grid-cols-2 gap-3 tablet:flex tablet:flex-wrap">
+            <Button href="/jobs" size="L" className="!min-w-0 !px-3 tablet:!min-w-[168px] tablet:!px-5">
               Find jobs
             </Button>
-            <Button href="/signup?role=employer" size="L" variant="secondary" className="min-w-[160px]">
+            <Button href="/signup?role=employer" size="L" variant="secondary" className="!min-w-0 !px-3 tablet:!min-w-[160px] tablet:!px-5">
               Post a job
             </Button>
           </div>

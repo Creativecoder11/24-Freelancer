@@ -63,7 +63,7 @@ export function EarningsCalculator({ rate }: { rate: number }) {
           <p aria-live="polite" className="text-label-sm font-semibold text-fg-inverse tabular-nums">
             {friends} {friends === 1 ? 'friend' : 'friends'} × {formatMoney(earnings.toFixed(2))} × {pct}% = {formatMoney(result.toFixed(2))}
           </p>
-          <p className="mt-2 text-body-xs text-fg-inverse-secondary">Plus {pct}% of any deposits they make.</p>
+          <p className="mt-2 text-body-xs text-fg-inverse-secondary">Commission starts from each friend’s first approved task.</p>
         </div>
       </div>
     </div>

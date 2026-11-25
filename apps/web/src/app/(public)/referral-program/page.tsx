@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const pct = +((await getRate()) * 100).toFixed(2);
   return {
     title: 'Referral program',
-    description: `Invite friends to 24 Freelancing and earn ${pct}% of every task they complete and every deposit they make — added to your balance automatically.`,
+    description: `Invite friends to 24 Freelancing and earn ${pct}% commission on every approved task reward they earn, starting from their first task — added to your balance automatically.`,
   };
 }
 
@@ -29,11 +29,11 @@ export default async function ReferralProgramPage() {
 
   const steps = [
     ['Share your link', 'Send it to friends or post it where people look for online work.'],
-    ['Friends join and work', 'Your code is filled in when they sign up. They earn exactly what they would without it.'],
-    [`You earn ${pct}%`, 'On each task they complete and each deposit they make, straight into your balance.'],
+    ['Friends complete their first task', 'Your code is filled in when they sign up. Commission starts once their first task is approved.'],
+    [`You earn ${pct}%`, 'Of every approved task reward they earn after that, straight into your balance.'],
   ];
   const rules: [boolean, string][] = [
-    [true, 'Commission is credited on approved tasks and completed deposits.'],
+    [true, 'Commission is credited on approved task rewards only.'],
     [true, 'Your friends never earn less because they used your code.'],
     [false, 'Self-referrals and duplicate accounts don’t earn commission.'],
     [false, 'Spam or misleading promotion can remove referral earnings.'],
@@ -45,10 +45,10 @@ export default async function ReferralProgramPage() {
         <div data-reveal>
           <p className="text-overline uppercase text-fg-brand">Referral program</p>
           <h1 className="mt-4 font-display text-[40px] font-extrabold leading-[48px] tracking-[-1.2px] text-fg tablet:text-display-xl">
-            Earn {pct}% from every friend you invite
+            Invite friends. Earn {pct}% of what they earn.
           </h1>
           <p className="mt-6 max-w-[520px] text-body-lg text-fg-secondary">
-            You get {pct}% of every task your referrals complete and {pct}% of every deposit they make — added to your balance automatically.
+            From the moment your friend completes their first task, you get {pct}% commission on every approved task reward they earn — added to your balance automatically.
           </p>
           <Button href="/signup" size="L" className="mt-8 w-full tablet:w-[300px]">
             Create account to get your link

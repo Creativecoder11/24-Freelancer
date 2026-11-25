@@ -134,6 +134,7 @@ function Body({ w }: { w: WalletSummary }) {
   };
 
   const after = Number(w.available_usd) + (Number.isFinite(n) ? n : 0);
+  const amountLabel = Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00';
   const paused = af.deposits_paused || w.account_status !== 'active' || !choice;
 
   return (
@@ -371,7 +372,9 @@ function Body({ w }: { w: WalletSummary }) {
             </p>
 
             <Button type="submit" size="L" fullWidth loading={start.isPending} loadingText={ch ? 'Submitting…' : 'Redirecting…'} disabled={paused} disabledReasonId="dep-paused">
-              {ch ? `I’ve sent it · Submit ${ch.label} deposit · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}` : `Continue to payment · ${Number.isFinite(n) && n > 0 ? formatMoney(n.toFixed(2)) : '$0.00'}`}
+              {/* Phone: short label so it fits on one line. Tablet+: the full label. */}
+              <span className="tablet:hidden">{ch ? `I’ve sent ${amountLabel} · Submit` : `Pay ${amountLabel}`}</span>
+              <span className="hidden tablet:inline">{ch ? `I’ve sent it · Submit ${ch.label} deposit · ${amountLabel}` : `Continue to payment · ${amountLabel}`}</span>
             </Button>
             <span id="dep-paused" className="sr-only">
               Deposits are paused.
