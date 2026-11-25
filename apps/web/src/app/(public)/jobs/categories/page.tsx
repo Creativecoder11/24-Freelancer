@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import type { PublicCategory } from '@24f/shared';
-import { apiTry } from '@/lib/api/server';
+import { apiTry, LIVE } from '@/lib/api/server';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { CategorySearch } from '@/components/public/categories/CategorySearch';
 
-export const revalidate = 60;
+// Open-job counts per category are live.
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Job categories',
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 
 /** SCR-PUB-04 directory only (Figma 21:1053). Typing a search switches the URL to /jobs/search. */
 export default async function CategoriesPage() {
-  const cats = await apiTry<PublicCategory[]>('/public/categories');
+  const cats = await apiTry<PublicCategory[]>('/public/categories', LIVE);
   return (
     <MarketingMotion>
       <CategorySearch categories={cats?.data ?? []} initialQuery="" initialTab="all" initial={null} initialCounts={null} />

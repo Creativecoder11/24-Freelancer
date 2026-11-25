@@ -404,7 +404,8 @@ export const ek = {
 
 /** After any money-moving action: refresh everything that shows balances or counts. */
 export function invalidateEmployer(qc: QueryClient) {
-  return Promise.all([qc.invalidateQueries({ queryKey: ['employer'] }), qc.invalidateQueries({ queryKey: ['me'] })]);
+  // ['worker'] too: a job just published/paused/closed changes Find jobs for this browser's Worker mode.
+  return Promise.all([qc.invalidateQueries({ queryKey: ['employer'] }), qc.invalidateQueries({ queryKey: ['me'] }), qc.invalidateQueries({ queryKey: ['worker'] })]);
 }
 
 export function useOverview() {

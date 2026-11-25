@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Alert, Avatar, Breadcrumbs, Button, Icon, JobCard, Link, Progress, StatusBadge } from '@24f/ui';
 import { formatRelative, formatReward, type JobCard as JobCardT, type JobDetailPublic } from '@24f/shared';
-import { apiGet, apiTry, ApiRequestError } from '@/lib/api/server';
+import { apiGet, apiTry, ApiRequestError, LIVE } from '@/lib/api/server';
 import { toCardData } from '@/lib/jobs';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 
@@ -10,7 +10,7 @@ type Props = { params: Promise<{ publicId: string }> };
 
 async function load(id: string) {
   try {
-    return (await apiGet<JobDetailPublic>(`/public/jobs/${encodeURIComponent(id)}`, 30)).data;
+    return (await apiGet<JobDetailPublic>(`/public/jobs/${encodeURIComponent(id)}`, LIVE)).data;
   } catch (e) {
     if (e instanceof ApiRequestError && e.status === 404) return null;
     throw e;
@@ -33,7 +33,7 @@ export default async function JobDetailPage({ params }: Props) {
   const id = (await params).publicId.toUpperCase();
   const job = await load(id);
   if (!job) notFound();
-  const similar = await apiTry<JobCardT[]>(`/public/jobs/${id}/similar?per_page=3`, 60);
+  const similar = await apiTry<JobCardT[]>(`/public/jobs/${id}/similar?per_page=3`, LIVE);
   const proofParts = job.proof_label.split(' + ');
   const since = job.employer.since ? `${MONTHS[Number(job.employer.since.slice(5, 7)) - 1]} ${job.employer.since.slice(0, 4)}` : null;
   const next = encodeURIComponent(`/worker/jobs/${job.public_id}`);

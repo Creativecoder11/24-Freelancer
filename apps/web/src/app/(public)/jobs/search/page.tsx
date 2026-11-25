@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import type { JobCard, PublicCategory } from '@24f/shared';
-import { apiTry } from '@/lib/api/server';
+import { apiTry, LIVE } from '@/lib/api/server';
 import type { SearchMeta } from '@/lib/api/public-actions';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { CategorySearch } from '@/components/public/categories/CategorySearch';
@@ -23,9 +23,9 @@ export default async function SearchPage({ searchParams }: Props) {
   const searching = q.length >= 2;
   const enc = encodeURIComponent(q);
   const [cats, all, filtered] = await Promise.all([
-    apiTry<PublicCategory[]>('/public/categories'),
-    searching ? apiTry<JobCard[], SearchMeta>(`/public/search?q=${enc}`, 30) : null,
-    searching && rawTab !== 'all' ? apiTry<JobCard[], SearchMeta>(`/public/search?q=${enc}&category=${encodeURIComponent(rawTab)}`, 30) : null,
+    apiTry<PublicCategory[]>('/public/categories', LIVE),
+    searching ? apiTry<JobCard[], SearchMeta>(`/public/search?q=${enc}`, LIVE) : null,
+    searching && rawTab !== 'all' ? apiTry<JobCard[], SearchMeta>(`/public/search?q=${enc}&category=${encodeURIComponent(rawTab)}`, LIVE) : null,
   ]);
   const tab = rawTab !== 'all' && filtered ? rawTab : 'all';
   const current = tab === 'all' ? all : filtered;

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { Breadcrumbs, Button, JobRow, Pagination } from '@24f/ui';
 import { COOKIE_NAMES, type JobCard as JobCardT, type ListMeta, type PublicCategory } from '@24f/shared';
-import { apiTry } from '@/lib/api/server';
+import { apiTry, LIVE } from '@/lib/api/server';
 import { toRowData } from '@/lib/jobs';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { BrowseFilters } from '@/components/jobs/BrowseFilters';
@@ -24,9 +24,9 @@ export default async function BrowsePage({ searchParams }: { searchParams: Promi
   // `fl_session` is the API's signed-in hint (see middleware.ts). Guests get a blurred preview.
   const signedIn = (await cookies()).get(COOKIE_NAMES.session)?.value === '1';
   const [jobs, all, cats] = await Promise.all([
-    apiTry<JobCardT[], ListMeta>(`/public/jobs${toQuery(applied, { per_page: '20' })}`, 30),
-    apiTry<JobCardT[], ListMeta>('/public/jobs?count_only=true', 60),
-    apiTry<PublicCategory[]>('/public/categories', 60),
+    apiTry<JobCardT[], ListMeta>(`/public/jobs${toQuery(applied, { per_page: '20' })}`, LIVE),
+    apiTry<JobCardT[], ListMeta>('/public/jobs?count_only=true', LIVE),
+    apiTry<PublicCategory[]>('/public/categories', LIVE),
   ]);
   const meta = jobs?.meta;
   const totalOpen = all?.meta?.total ?? 0;

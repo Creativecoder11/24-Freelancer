@@ -74,7 +74,12 @@ export function useWorkerJobs(qs: string) {
       return { data: r.data, meta: r.meta as JobsMeta, at: Date.now() };
     },
     placeholderData: keepPreviousData,
-    refetchInterval: visible ? 60_000 : false,
+    // Always fresh: refetch when the page opens or the tab regains focus, and every 30 s while open,
+    // so a newly published job shows up without a reload.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: visible ? 30_000 : false,
   });
 }
 

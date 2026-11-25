@@ -27,7 +27,7 @@ export function LiveJobBoard({ initial, categories, total }: { initial: JobCard[
     setActive(slug);
     start(async () => {
       const qs = slug === 'all' ? '' : `&category=${slug}`;
-      const res = await fetch(`${API}/public/jobs?per_page=6${qs}`).then((r) => r.json());
+      const res = await fetch(`${API}/public/jobs?per_page=6${qs}`, { cache: 'no-store' }).then((r) => r.json());
       setJobs(res.data ?? []);
       requestAnimationFrame(() => {
         gsap.fromTo('.live-board li', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.04, ease: 'power2.out' });

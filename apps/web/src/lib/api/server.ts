@@ -13,9 +13,15 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** Server-side GET for public data (RSC). Revalidates every `revalidate` seconds. */
+/**
+ * Pass as `revalidate` for live job data (listings, counts, job details): fetched on every request so
+ * a job shows up the moment it's published, and disappears as soon as it's paused, full or closed.
+ */
+export const LIVE = 0;
+
+/** Server-side GET for public data (RSC). Revalidates every `revalidate` seconds; `LIVE` skips the cache. */
 export async function apiGet<T, M = Record<string, unknown>>(path: string, revalidate = 60): Promise<ApiEnvelope<T, M>> {
-  const res = await fetch(`${API}${path}`, { next: { revalidate } });
+  const res = await fetch(`${API}${path}`, revalidate === LIVE ? { cache: 'no-store' } : { next: { revalidate } });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body) {
     throw new ApiRequestError(res.status, body?.error?.code ?? 'UNKNOWN', body?.error?.message ?? 'Request failed');

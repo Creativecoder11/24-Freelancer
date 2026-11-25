@@ -1,20 +1,21 @@
 import { Link } from '@24f/ui';
 import type { Faq, JobCard, PublicCategory, PublicConfig } from '@24f/shared';
-import { apiTry } from '@/lib/api/server';
+import { apiTry, LIVE } from '@/lib/api/server';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { Hero } from '@/components/marketing/home/Hero';
 import { LiveJobBoard } from '@/components/marketing/home/LiveJobBoard';
 import { StepsToggle } from '@/components/marketing/home/StepsToggle';
 import { Audience, FaqSection, FinalCta, Promises, ReferralBand, SectionHeader, Trust } from '@/components/marketing/home/Sections';
 
-export const revalidate = 60;
+// Rendered per request so the live job board always shows newly published jobs.
+export const dynamic = 'force-dynamic';
 
 /** SCR-PUB-01 Homepage (Figma 18:477). */
 export default async function HomePage() {
   const [jobs, cats, faqs, config] = await Promise.all([
-    apiTry<JobCard[], { total: number }>('/public/jobs?per_page=6'),
-    apiTry<PublicCategory[]>('/public/categories'),
-    apiTry<Faq[]>('/public/faqs?placement=home'),
+    apiTry<JobCard[], { total: number }>('/public/jobs?per_page=6', LIVE),
+    apiTry<PublicCategory[]>('/public/categories', LIVE),
+    apiTry<Faq[]>('/public/faqs?placement=home', 60),
     apiTry<PublicConfig>('/public/config', 300),
   ]);
   const rate = Number(config?.data.referral.task_rate ?? '0.05');
