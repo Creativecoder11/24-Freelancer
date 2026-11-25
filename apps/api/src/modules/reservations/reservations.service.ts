@@ -20,6 +20,7 @@ import { getEnv } from '../../config/env';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { EmployerCore, dec, expectedReserve } from '../employer/employer-common';
 import { iso, isUniqueViolation, recordEvent, reward3, type Tx } from '../worker/worker-common';
 import { ProofChecksService } from './proof-checks.service';
 
@@ -58,6 +59,7 @@ export class ReservationsService {
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
+    private readonly core: EmployerCore,
     private readonly checks: ProofChecksService,
   ) {}
 
@@ -198,6 +200,13 @@ export class ReservationsService {
       },
     });
     const updated = await tx.job.update({ where: { id: job.id }, data: { countActiveReservations: { decrement: 1 } } });
+    // A closed, paused, suspended or ended job only keeps reserve for work in progress or in review.
+    // A slot that ends here without a submission returns its cost to the employer's available
+    // balance (on a running job the slot just reopens, so its reserve stays).
+    if (updated.status !== 'running') {
+      const release = Decimal.max(0, dec(updated.reserveOutstandingUsd).minus(expectedReserve(updated)));
+      await this.core.moveReserve(tx, updated, 'release', release, `reservation:${r.id}:${outcome}`, { title: updated.title, reason: 'unused slot returned' }, { system: true });
+    }
     await this.uploads.scheduleDeletion(tx, draftUploadIds(r.draft));
     await recordEvent(tx, r.id, null, outcome === 'released' ? 'slot_released' : outcome === 'expired' ? 'slot_expired' : 'reservation_cancelled', actor);
     return { job: updated, at: now };

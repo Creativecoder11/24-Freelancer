@@ -228,7 +228,8 @@ export class AdminJobsService {
           }
         }
         const fresh = await tx.job.findUniqueOrThrow({ where: { id: j.id } });
-        const keep = unitCost(fresh).mul(fresh.countNeedsFix + fresh.countInReview);
+        // Same rule as an employer close: keep the cost of slots in review, needs fix or in progress.
+        const keep = expectedReserve(fresh, 'cancelled');
         const release = Decimal.max(0, dec(fresh.reserveOutstandingUsd).minus(keep));
         await this.core.moveReserve(tx, fresh, 'release', release, `job:${j.publicId}:admin-close`, { title: j.title, reason: 'job closed, unused slots' });
         await tx.job.update({ where: { id: j.id }, data: { status: 'cancelled', closeReason: 'admin_closed', closedAt: now, pauseReason: null } });

@@ -797,25 +797,44 @@ export class JobsService {
     }
   }
 
-  async close(userId: string, publicId: string) {
+  /**
+   * Early close. Money for slots workers already used (in review, needs fix, or started and still
+   * within the time limit) stays reserved so the review can pay them; approved slots were paid
+   * when approved. Every unworked slot (reward + platform fee) goes back to the available balance
+   * at once. A started slot that later ends without a submission is refunded then
+   * (ReservationsService.endReservation). `dry_run` returns the same figures without closing.
+   */
+  async close(userId: string, publicId: string, body: { dry_run?: boolean } = {}) {
     const own = await this.core.ownJob(userId, publicId);
     return this.db.$transaction(async (tx) => {
       const job = await this.core.lockJob(tx, own.id);
       if (job.status === 'suspended') throw new ApiError('JOB_SUSPENDED', undefined, undefined, { reason: job.suspensionReason });
       if (job.status !== 'running' && job.status !== 'paused') throw new ApiError('INVALID_STATE', 'Only running or paused jobs can be closed.');
+      const unit = unitCost(job);
       const keep = expectedReserve(job, 'cancelled');
       const release = Decimal.max(0, dec(job.reserveOutstandingUsd).minus(keep));
+      const breakdown = {
+        unit_cost_usd: usd3(unit),
+        unworked_slots: slotsLeftOf(job),
+        held_slots: { in_review: job.countInReview, needs_fix: job.countNeedsFix, in_progress: job.countActiveReservations },
+        approved_slots: job.countApproved,
+        released_usd: usd2(release),
+        released_exact_usd: release.toFixed(6),
+        still_committed_usd: usd2(keep),
+        to_review: job.countInReview,
+      };
+      if (body.dry_run) return { public_id: job.publicId, status: job.status, dry_run: true, ...breakdown };
       const t = await this.core.moveReserve(tx, job, 'release', release, `job:${job.publicId}:close`, { title: job.title, reason: 'job closed, unused slots' }, { userId });
       const now = new Date();
       await tx.job.update({ where: { id: job.id }, data: { status: 'cancelled', closeReason: 'employer_closed', closedAt: now, pauseReason: null, version: { increment: 1 } } });
+      const after = await this.core.balances(userId, tx);
       return {
         public_id: job.publicId,
         status: 'cancelled',
         close_reason: 'employer_closed',
         closed_at: now.toISOString(),
-        released_usd: usd2(release),
-        still_committed_usd: usd2(keep),
-        to_review: job.countInReview,
+        ...breakdown,
+        available_after_usd: usd2(after.available),
         ledger_ref: t?.publicRef ?? null,
       };
     });

@@ -68,11 +68,17 @@ export class JobLifecycleService implements OnModuleInit, OnModuleDestroy {
     for (const { id } of due) {
       try {
         const out = await this.db.$transaction(async (tx) => {
-          const job = await this.core.lockJob(tx, id);
+          let job = await this.core.lockJob(tx, id);
           const expired = !!job.endsAt && job.endsAt.getTime() <= Date.now();
           const filled = job.slotsTotal !== null && job.countApproved >= job.slotsTotal;
           if (!(job.status === 'running' || job.status === 'paused') || (!expired && !(filled && job.status === 'running'))) return null;
           const reason = filled ? 'slots_filled' : 'expired';
+          // Active reservations on an expired job are cancelled so workers can't start submitting into it.
+          // Cancel them before sizing the reserve, so their cost is refunded with the other unused slots.
+          if (expired) {
+            await tx.slotReservation.updateMany({ where: { jobId: job.id, status: 'active' }, data: { status: 'cancelled', cancelledAt: new Date() } });
+            job = await tx.job.update({ where: { id: job.id }, data: { countActiveReservations: 0 } });
+          }
           const keep = expectedReserve(job, 'completed');
           const release = Decimal.max(0, dec(job.reserveOutstandingUsd).minus(keep));
           const t = await this.core.moveReserve(
@@ -84,11 +90,6 @@ export class JobLifecycleService implements OnModuleInit, OnModuleDestroy {
             { title: job.title, reason: reason === 'expired' ? 'job ended, unused slots' : 'job completed, unused budget' },
             { system: true },
           );
-          // Active reservations on an expired job are cancelled so workers can't start submitting into it.
-          if (expired) {
-            await tx.slotReservation.updateMany({ where: { jobId: job.id, status: 'active' }, data: { status: 'cancelled' } });
-            await tx.job.update({ where: { id: job.id }, data: { countActiveReservations: 0 } });
-          }
           const now = new Date();
           await tx.job.update({
             where: { id: job.id },

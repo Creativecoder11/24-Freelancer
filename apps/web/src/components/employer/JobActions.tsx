@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button, Dialog, NumberStepper, cn, toast, type ActionMenuItem } from '@24f/ui';
 import { formatDateTime, formatMoney, formatReward } from '@24f/shared';
 import { api, ApiError, errorText, idemKey, invalidateEmployer, useJobOptions, useQueryClient, useWallet, type JobAction, type JobStatus, type PromotionKind } from './api';
@@ -20,6 +20,18 @@ export interface ActionJob {
 }
 
 type Kind = 'pause' | 'resume' | 'close' | 'delete' | 'slots' | 'promote';
+
+/** POST /employer/jobs/:id/close (also returned with `dry_run: true`, which changes nothing). */
+interface CloseResult {
+  unit_cost_usd: string;
+  unworked_slots: number;
+  held_slots: { in_review: number; needs_fix: number; in_progress: number };
+  released_usd: string;
+  released_exact_usd: string;
+  still_committed_usd: string;
+}
+
+const slotWord = (n: number) => `${n} ${n === 1 ? 'slot' : 'slots'}`;
 
 /**
  * Promotion choices (CR-2026-11b). Prices and the Pin length come from admin settings.
@@ -53,6 +65,15 @@ export function useJobActions(opts: { onDeleted?: () => void } = {}) {
   const reward = Number(state?.job.reward_usd ?? 0);
   const available = Number(wallet.data?.available_usd ?? 0);
 
+  // Exact refund for the close dialog, from the same calculation the close itself uses.
+  const closePreview = useQuery<CloseResult, ApiError>({
+    queryKey: ['employer', 'job', state?.job.public_id, 'close-preview'],
+    queryFn: () => api.post<CloseResult>(`/employer/jobs/${state!.job.public_id}/close`, { dry_run: true }),
+    enabled: state?.kind === 'close',
+    staleTime: 0,
+    gcTime: 0,
+  });
+
   const m = useMutation({
     mutationFn: async ({ kind, job }: { kind: Kind; job: ActionJob }) => {
       const id = job.public_id;
@@ -69,7 +90,14 @@ export function useJobActions(opts: { onDeleted?: () => void } = {}) {
       const t = {
         pause: ['Job paused', 'Workers can’t start it until you resume.'],
         resume: ['Job resumed.', undefined],
-        close: ['Job closed', 'Unused budget returned to your deposit.'],
+        close: [
+          'Job closed',
+          (() => {
+            const c = r as CloseResult;
+            const back = Number(c.released_exact_usd) > 0 ? `${formatMoney(c.released_exact_usd)} is back in your available balance.` : 'No unused budget to return.';
+            return Number(c.still_committed_usd) > 0 ? `${back} ${formatMoney(c.still_committed_usd)} stays reserved for submitted work.` : back;
+          })(),
+        ],
         delete: ['Draft deleted.', undefined],
         slots: [
           'Workers added',
@@ -160,7 +188,7 @@ export function useJobActions(opts: { onDeleted?: () => void } = {}) {
     resume: { title: 'Resume this job?', body: `We’ll reserve ${formatMoney(resumeTotal.toFixed(6))} from your deposit for the open slots.`, cancel: 'Cancel', ok: 'Resume job' },
     close: {
       title: 'Close this job?',
-      body: 'Workers can’t start it again. Unused budget returns to your deposit. You can still review submitted work.',
+      body: 'Workers can’t start it again. You can still review work that was already submitted.',
       cancel: 'Keep running',
       ok: 'Close job',
       destructive: true,
@@ -231,6 +259,7 @@ export function useJobActions(opts: { onDeleted?: () => void } = {}) {
           ) : null}
         </div>
       ) : null}
+      {state?.kind === 'close' ? <ClosePreview q={closePreview} /> : null}
       {state?.kind === 'promote' ? (
         <div className="space-y-3">
           <div role="radiogroup" aria-label="Promotion" className="space-y-2">
@@ -277,4 +306,42 @@ export function useJobActions(opts: { onDeleted?: () => void } = {}) {
   );
 
   return { open, menuItems, dialogs, duplicating: duplicate.isPending };
+}
+
+/** Close dialog: what returns to the available balance now and what stays reserved for review. */
+function ClosePreview({ q }: { q: { data?: CloseResult; isPending: boolean; isError: boolean } }) {
+  if (q.isPending) return <div className="h-[116px] animate-pulse rounded-[12px] bg-subtle" aria-busy="true" aria-label="Loading" />;
+  if (q.isError || !q.data) return <p className="text-body-sm text-fg-secondary">Unused budget returns to your available balance when the job closes.</p>;
+  const d = q.data;
+  const held = d.held_slots.in_review + d.held_slots.needs_fix + d.held_slots.in_progress;
+  const heldParts = [
+    d.held_slots.in_review ? `${d.held_slots.in_review} in review` : '',
+    d.held_slots.needs_fix ? `${d.held_slots.needs_fix} being fixed` : '',
+    d.held_slots.in_progress ? `${d.held_slots.in_progress} in progress` : '',
+  ].filter(Boolean);
+  return (
+    <div className="space-y-3">
+      <dl className="space-y-1.5 rounded-[12px] bg-subtle px-4 py-3 text-body-sm">
+        <div className="flex justify-between gap-3 font-semibold">
+          <dt className="text-fg">
+            Back to your balance now · {slotWord(d.unworked_slots)} × {formatReward(d.unit_cost_usd)}
+          </dt>
+          <dd className="tabular-nums text-fg-success">{formatMoney(d.released_exact_usd)}</dd>
+        </div>
+        {held > 0 ? (
+          <div className="flex justify-between gap-3">
+            <dt className="text-fg-secondary">
+              Stays reserved · {slotWord(held)} ({heldParts.join(', ')})
+            </dt>
+            <dd className="tabular-nums text-fg">{formatMoney(d.still_committed_usd)}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {held > 0 ? (
+        <p className="text-body-xs text-fg-tertiary">
+          Reserved money pays workers when their work is approved. Anything rejected, or a started slot that isn’t submitted in time, comes back to your balance.
+        </p>
+      ) : null}
+    </div>
+  );
 }

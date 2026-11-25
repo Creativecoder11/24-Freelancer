@@ -17,6 +17,7 @@ const quoteBody = z.object({ reward_usd: z.string().optional(), slots_total: z.n
 const publishBody = z.object({ posting_rules_accepted: z.boolean().optional(), expected_total_reserved_usd: z.string().optional(), expected_boost_fee_usd: z.string().optional() });
 const promoteBody = z.object({ kind: z.enum(['top', 'pin', 'combo']), expected_price_usd: z.string().max(20).optional() });
 const resumeBody = z.object({ expected_reserve_usd: z.string().optional() });
+const closeBody = z.object({ dry_run: z.boolean().optional() });
 const slotsBody = z.object({ add_slots: z.number().int(), expected_amount_usd: z.string().optional() });
 const marketQuery = z.object({ category: z.string().optional(), time_per_task: z.string().optional() });
 
@@ -102,8 +103,8 @@ export class JobsController {
   @Post('jobs/:publicId/close')
   @HttpCode(200)
   @AllowStatus('active', 'restricted')
-  close(@CurrentUser('id') uid: string, @Param('publicId') id: string) {
-    return this.jobs.close(uid, id);
+  close(@CurrentUser('id') uid: string, @Param('publicId') id: string, @Body(new ZodPipe(closeBody)) body: z.infer<typeof closeBody>) {
+    return this.jobs.close(uid, id, body);
   }
 
   @Post('jobs/:publicId/slots')
