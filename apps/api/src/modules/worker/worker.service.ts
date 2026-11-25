@@ -360,7 +360,6 @@ export class WorkerService {
     else if (submission) state = 'already_done';
     else if (live) state = 'in_progress';
     else if (user.status !== 'active') state = 'restricted';
-    else if (user.kycStatus !== 'verified' && user.kycStatus !== 'pending') state = 'verify_required'; // documents not submitted (or rejected)
     else if (job.status === 'paused') state = 'paused';
     else if (job.status !== 'running' || ended) state = 'closed';
     else if (slotsLeft <= 0) state = 'full';

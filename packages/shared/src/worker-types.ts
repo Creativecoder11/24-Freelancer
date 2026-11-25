@@ -92,8 +92,7 @@ export type StartState =
   | 'already_done'
   | 'not_eligible'
   | 'restricted'
-  | 'own_job'
-  | 'verify_required';
+  | 'own_job';
 
 export interface ReservationDraft {
   proof_items: { proof_requirement_id: string; link_url: string | null; text_value: string | null; upload_id: string | null }[];

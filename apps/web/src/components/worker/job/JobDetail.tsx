@@ -134,8 +134,7 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
     }
   }, [left, res, offset, qc, job.public_id]);
 
-  // Identity documents first (submitted is enough): one dialog for the start button, the mobile bar
-  // and a start the API refuses because the documents are missing or were rejected.
+  // Identity documents are only asked for here when the employer limited the job to verified workers.
   const [kycOpen, setKycOpen] = useState(false);
   const start = useMutation<StartJobResponse, ApiError>({
     mutationFn: () => api.post<StartJobResponse>(`/worker/jobs/${job.public_id}/start`),
@@ -149,7 +148,6 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
     },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: wk.job(job.public_id) });
-      if (e.code === 'VERIFICATION_REQUIRED') return setKycOpen(true);
       toast.show({ tone: 'danger', title: e.message || 'We couldn’t start this job' });
     },
   });
@@ -338,10 +336,6 @@ function JobView({ job, offset, onRelease, onReport }: { job: WorkerJobDetail; o
           <Button size="L" loading={start.isPending} loadingText="Starting…" onClick={() => start.mutate()} className="w-[200px]">
             Start this job
           </Button>
-        ) : job.start_state === 'verify_required' ? (
-          <Button size="L" onClick={() => setKycOpen(true)} className="w-[200px]">
-            Start this job
-          </Button>
         ) : job.start_state === 'already_done' && job.submission_ref ? (
           <Button size="L" variant="secondary" href={`/worker/tasks/${job.submission_ref}`} className="w-[200px]">
             View your task
@@ -371,14 +365,14 @@ function PulseTime({ ms, low }: { ms: number; low: boolean }) {
 function StartArea({ job, starting, onStart, onVerify }: { job: WorkerJobDetail; starting: boolean; onStart: () => void; onVerify: () => void }) {
   const kycStatus = useMe().data?.kyc_status;
   // Identity documents are submitted in a dialog on this page; an admin then reviews them.
-  const verifyAction = (text: string, label = 'Verify now') =>
+  const verifyAction = (text: string) =>
     kycStatus === 'pending' && job.start_state === 'not_eligible' ? (
       disabled('This job is for identity-verified workers. Your documents are under review.')
     ) : (
       box(
         <>
           <Button size="L" fullWidth leadingIcon="shield-check" onClick={onVerify}>
-            {label}
+            Verify now
           </Button>
           {reason(text)}
         </>,
@@ -437,11 +431,6 @@ function StartArea({ job, starting, onStart, onVerify }: { job: WorkerJobDetail;
       if (job.ineligible?.reason === 'kyc_required') return verifyAction('This job is for identity-verified workers. Submit your documents to take it.');
       return disabled(
         `This job needs an approval rate of ${job.ineligible?.required_rate ?? '—'}% or higher. Yours is ${job.ineligible?.your_rate !== null && job.ineligible?.your_rate !== undefined ? `${job.ineligible.your_rate}%` : '—'}.`,
-      );
-    case 'verify_required':
-      return verifyAction(
-        kycStatus === 'rejected' ? 'Your documents weren’t accepted. Submit them again to start jobs.' : 'Verify your identity first: a photo of your ID and a selfie. You can start right after you submit.',
-        'Start this job',
       );
     case 'restricted':
       return disabled('Your account is restricted. You can’t start jobs right now. Contact support to appeal.');

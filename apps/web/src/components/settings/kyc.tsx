@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { documentNumberValid, formatBytesLimit, formatDate, KYC_DOCUMENT_TYPE, UPLOAD_RULES, type KycDocumentType } from '@24f/shared';
 import { Alert, Button, Dialog, Field, Icon, RadioGroup, Upload, cn } from '@24f/ui';
 import { api, ApiError } from '@/lib/api/client';
-import { useMe } from '@/lib/auth/session';
 import { useProofUpload } from '@/components/worker/useProofUpload';
 import { useKyc, wal } from '@/components/wallet/api';
 import { Section } from './SettingsShell';
@@ -25,62 +24,8 @@ const NUMBER_HINT: Record<KycDocumentType, string> = {
 
 /** Why the verification dialog opened, shown above the form. */
 export const KYC_INTRO = {
-  post: 'Verify your identity to post jobs. It takes about 3 minutes: a photo of your ID and a selfie. You can publish as soon as you submit; we review within 24 h.',
-  start: 'Verify your identity to start jobs. It takes about 3 minutes: a photo of your ID and a selfie. You can start as soon as you submit; we review within 24 h.',
+  start: 'This job is for identity-verified workers. It takes about 3 minutes: a photo of your ID and a selfie. We review within 24 h.',
 } as const;
-
-/** Documents are in (verified, or submitted and under review). Same rule as the API's job gates. */
-export const kycSubmitted = (status: string | undefined) => status === 'verified' || status === 'pending';
-
-/**
- * Identity check in front of Post a job. Until documents are submitted the page shows why and opens
- * the verification dialog; once they're sent the children (the job wizard) render.
- */
-export function KycGate({ children }: { children: React.ReactNode }) {
-  const me = useMe();
-  const kyc = useKyc();
-  const [open, setOpen] = useState(false);
-  const status = me.data?.kyc_status;
-  const ok = kycSubmitted(status);
-  const canSubmit = kyc.data?.can_submit !== false;
-  useEffect(() => {
-    if (me.data && !ok && canSubmit) setOpen(true);
-  }, [me.data, ok, canSubmit]);
-  if (!me.data) return <div className="h-64 animate-pulse rounded-card bg-muted" aria-busy="true" aria-label="Loading" />;
-  if (ok) return <>{children}</>;
-  const rejected = status === 'rejected';
-  return (
-    <section className="mx-auto max-w-[560px] rounded-card border border-line bg-surface p-6 text-center shadow-xs tablet:p-10">
-      <span className="mx-auto grid size-14 place-items-center rounded-full bg-brand-subtle text-fg-brand">
-        <Icon name="shield-check" size={24} />
-      </span>
-      <h2 className="mt-5 font-display text-h3 text-fg">{rejected ? 'Verify your identity again' : 'Verify your identity to post jobs'}</h2>
-      <p className="mt-2 text-body-md text-fg-secondary">
-        {rejected
-          ? (kyc.data?.rejection_reason ?? 'We couldn’t verify your last documents.') + ' Upload clearer photos to continue.'
-          : 'Every employer on 24 Freelancing is verified with an ID and a selfie. It takes about 3 minutes, and you can post as soon as you submit.'}
-      </p>
-      <div className="mt-6 flex flex-col items-center gap-3">
-        {canSubmit ? (
-          <Button size="L" leadingIcon="shield-check" onClick={() => setOpen(true)}>
-            Verify now
-          </Button>
-        ) : (
-          <>
-            <p className="text-body-sm text-fg-danger">You’ve used all your verification attempts.</p>
-            <Button size="L" variant="secondary" href="/help">
-              Contact support
-            </Button>
-          </>
-        )}
-        <Button variant="tertiary" href="/employer">
-          Back to dashboard
-        </Button>
-      </div>
-      <KycWizard open={open} onOpenChange={setOpen} intro={KYC_INTRO.post} />
-    </section>
-  );
-}
 
 export function VerificationSection({ autoOpen }: { autoOpen?: boolean }) {
   const kyc = useKyc();
@@ -90,7 +35,7 @@ export function VerificationSection({ autoOpen }: { autoOpen?: boolean }) {
   }, [autoOpen, kyc.data?.can_submit]);
   const k = kyc.data;
   return (
-    <Section id="verification" title="Verification" subtitle="Required to post or start jobs, and before your first withdrawal. Your documents are only used to confirm your identity.">
+    <Section id="verification" title="Verification" subtitle="Required before your first withdrawal. Your documents are only used to confirm your identity.">
       {kyc.isError ? (
         <p className="text-body-sm text-fg-tertiary">We couldn’t load your verification status.</p>
       ) : !k ? (

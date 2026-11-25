@@ -105,7 +105,6 @@ export class ReservationsService {
     const user = await this.prisma.db.user.findUnique({ where: { id: userId }, include: { workerProfile: true } });
     if (!user) throw new ApiError('UNAUTHENTICATED');
     if (user.status !== 'active') throw new ApiError('ACCOUNT_RESTRICTED');
-    if (user.kycStatus !== 'verified' && user.kycStatus !== 'pending') throw new ApiError('VERIFICATION_REQUIRED', 'Submit your verification documents to start jobs.');
 
     const holdMinutes = await this.settings.number('slot_hold_minutes', 60);
     const maxActive = await this.settings.number('max_active_reservations_per_worker', 3);

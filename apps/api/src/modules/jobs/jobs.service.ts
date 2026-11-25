@@ -578,13 +578,11 @@ export class JobsService {
   // ---------------------------------------------------------------- quote and publish
 
   async gates(userId: string) {
-    const u = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true, emailVerifiedAt: true, phoneVerifiedAt: true, kycStatus: true } });
+    const u = await this.db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true, emailVerifiedAt: true, phoneVerifiedAt: true } });
     const blockers: string[] = [];
     if (!u.emailVerifiedAt && !u.phoneVerifiedAt) blockers.push('verification_required');
     if (u.status !== 'active') blockers.push('account_restricted');
-    // Identity documents first (same rule as starting a job): submitted is enough, the admin review
-    // runs in the background and a rejection blocks again until the user resubmits.
-    if (u.kycStatus !== 'verified' && u.kycStatus !== 'pending') blockers.push('kyc_required');
+    // Identity documents (KYC) are not needed to post jobs: they're required only before a withdrawal.
     return blockers;
   }
 
@@ -640,7 +638,6 @@ export class JobsService {
     const gates = await this.gates(userId);
     if (gates.includes('verification_required')) throw new ApiError('VERIFICATION_REQUIRED');
     if (gates.includes('account_restricted')) throw new ApiError('ACCOUNT_RESTRICTED');
-    if (gates.includes('kyc_required')) throw new ApiError('KYC_REQUIRED', 'Verify your identity to post jobs. Submit your ID and a selfie; you can publish as soon as they’re sent.');
     const lists = {
       blockTerms: await this.settings.get<string[]>('moderation_blocklist_terms', []),
       blockDomains: await this.settings.get<string[]>('moderation_blocklist_domains', []),
