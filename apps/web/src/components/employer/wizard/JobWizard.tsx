@@ -300,7 +300,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
       toast.show({
         tone: 'success',
         title: r.starts_at ? 'Job scheduled' : 'Job published',
-        body: `${formatMoney(r.total_reserved_usd)} is reserved from your deposit.${r.starts_at ? ` Goes live ${new Date(r.starts_at).toLocaleString()}.` : ''}`,
+        body: `${formatMoney(r.total_reserved_usd)} was deducted from your balance.${r.starts_at ? ` Goes live ${new Date(r.starts_at).toLocaleString()}.` : ''}`,
       });
       await invalidateEmployer(qc);
       router.push(`/employer/jobs/${r.public_id}`);
@@ -405,7 +405,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
             {step === STEP_COUNT && !published && shortfall > 0 ? (
               <Alert
                 tone="danger"
-                title="Not enough available balance"
+                title="Not enough balance"
                 action={
                   <Button size="S" href={addFundsHref}>
                     Add funds · {formatMoney(Math.max(10, shortfall).toFixed(2))}
@@ -486,7 +486,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
           quote={quote.data ?? null}
           total={total}
           due={due}
-          depositBalance={wallet.data?.deposit_balance_usd ?? null}
+          depositBalance={wallet.data?.available_usd ?? null}
           available={available}
           isNew={!job?.published_at}
         />
@@ -497,7 +497,7 @@ function WizardBody({ step, job, defaults }: { step: number; job: JobDetail | nu
         onOpenChange={setPublishOpen}
         title={form.starts_at ? 'Schedule this job?' : 'Publish this job?'}
         description={[
-          `We’ll reserve ${totalLabel} from your deposit (${form.slots_total} slots × ${formatReward(form.reward_usd || '0')}). Unused budget returns to your deposit when the job closes.`,
+          `${totalLabel} will be deducted from your balance now (${form.slots_total} slots × ${formatReward(form.reward_usd || '0')}). Budget for unused slots comes back to your balance when the job closes or ends.`,
           form.starts_at ? `Workers see it from ${new Date(form.starts_at).toLocaleString()}.` : '',
         ]
           .filter(Boolean)
@@ -979,7 +979,7 @@ function StepBudget({
           onCheckedChange={(v) => set('auto_approve', v)}
           disabled={locked.has('auto_approve')}
         />
-        <Switch label="Pause when deposit runs low" description="We pause the job instead of overspending." checked={form.pause_on_low_deposit} onCheckedChange={(v) => set('pause_on_low_deposit', v)} />
+        <Switch label="Pause when balance runs low" description="We pause the job instead of overspending." checked={form.pause_on_low_deposit} onCheckedChange={(v) => set('pause_on_low_deposit', v)} />
       </div>
       <div data-wz className={cn('rounded-[14px] px-5 py-4', belowMin ? 'bg-danger-subtle' : 'bg-brand-subtle')}>
         <p className="text-label-md text-fg">Estimated job cost</p>
@@ -999,7 +999,7 @@ function StepBudget({
       </div>
       {shortfall > 0 ? (
         <Alert tone="warning" action={<Button size="S" variant="secondary" href={addFundsHref}>Add funds</Button>}>
-          This is more than your available balance. Add funds before publishing.
+          This is more than your balance. Add funds before publishing.
         </Alert>
       ) : null}
     </>
@@ -1053,7 +1053,7 @@ function StepReview({
         ['Open for', `${plural(form.open_for_days, 'day')} · ${form.min_approval_rate ? `${form.min_approval_rate}%+ approval rate` : 'any approval rate'}`],
         ['Review window', `${form.review_window_hours} hours · auto-approve ${form.auto_approve ? 'on' : 'off'}`],
         ['Starts', startsAt ? new Date(startsAt).toLocaleString() : 'When published'],
-        ['Total reserved', totalLabel],
+        ['Total cost', totalLabel],
       ],
     },
   ];
@@ -1176,7 +1176,7 @@ function Rail({
               <>
                 <Row k={`${form.slots_total} slots × ${reward}`} v={quote ? formatMoney(quote.max_spend_usd) : money(Number(form.reward_usd || 0) * form.slots_total)} />
                 <Row k="Platform fee" v={fee} />
-                <Row k="Deposit balance" v={depositBalance ? formatMoney(depositBalance) : '—'} />
+                <Row k="Your balance" v={depositBalance ? formatMoney(depositBalance) : '—'} />
               </>
             ) : (
               <>
@@ -1187,7 +1187,7 @@ function Rail({
           </dl>
           <div className="mt-4 border-t border-line-subtle pt-4">
             <div className="flex items-center justify-between">
-              <span className="text-label-md text-fg">Total reserved</span>
+              <span className="text-label-md text-fg">Total cost</span>
               {hasBudget && due > 0 ? (
                 <span className="font-display text-num-lg tabular-nums text-fg-brand">
                   <CountUp value={due} format={(n) => money(n)} key={money(due)} />
@@ -1198,8 +1198,8 @@ function Rail({
             </div>
             <p className="mt-2 text-body-xs text-fg-tertiary">
               {hasBudget && total > 0
-                ? `${available < Number(depositBalance ?? available) ? 'Available' : 'Deposit'} after publishing: ${money(Math.max(0, available - due))}. Unused budget returns to your deposit when the job closes.`
-                : `Your deposit balance: ${depositBalance ? formatMoney(depositBalance) : '—'}`}
+                ? `Balance after publishing: ${money(Math.max(0, available - due))}. Budget for unused slots comes back to your balance when the job closes or ends.`
+                : `Your balance: ${depositBalance ? formatMoney(depositBalance) : '—'}`}
             </p>
           </div>
         </section>

@@ -146,7 +146,7 @@ export class MeService {
       has_worker_profile: !!u.workerProfile,
       has_employer_profile: !!ep,
       employer: ep ? { business_name: ep.businessName, initials: initials(ep.businessName), employer_verified: !!ep.employerVerifiedAt } : null,
-      balances: { worker_available_usd: usd2(bal('worker_earnings')), employer_deposit_total_usd: usd2(employerTotal) },
+      balances: { worker_available_usd: usd2(bal('worker_earnings')), employer_available_usd: usd2(bal('employer_available')), employer_deposit_total_usd: usd2(employerTotal) },
       badges: { worker_tasks: workerTasks, employer_submissions: employerSubs, notifications_unread: unread },
       greeting_part: greetingPart(),
       livechat_identity_hash: secret ? createHmac('sha256', secret).update(u.publicId).digest('hex') : null,

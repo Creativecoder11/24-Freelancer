@@ -102,7 +102,7 @@ export function Audience() {
               <dd className="text-fg">Shown at checkout</dd>
             </div>
             <div className="flex justify-between border-t border-line-subtle pt-2 text-label-md">
-              <dt className="text-fg">Reserved from deposit</dt>
+              <dt className="text-fg">Deducted from balance</dt>
               <dd className="font-display text-num-md text-fg-brand" data-count="9" data-prefix="$" data-decimals="2">
                 $9.00
               </dd>

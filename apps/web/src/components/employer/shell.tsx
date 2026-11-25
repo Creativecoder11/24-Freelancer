@@ -76,7 +76,7 @@ export function EmployerShell({ children }: { children: React.ReactNode }) {
                   title: header.title,
                   subtitle: header.subtitle,
                   backHref: header.backHref,
-                  balance: formatMoney(me.balances.employer_deposit_total_usd),
+                  balance: formatMoney(me.balances.employer_available_usd),
                   unread: me.badges.notifications_unread > 0,
                 } satisfies Omit<TopbarProps, 'mode' | 'user' | 'onLogout' | 'onOpenMenu'>
               }

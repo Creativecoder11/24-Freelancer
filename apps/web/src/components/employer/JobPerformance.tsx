@@ -51,7 +51,7 @@ function Body({ d }: { d: Performance }) {
       </NextLink>
 
       {j.status === 'paused' && j.pause_reason === 'low_deposit' ? (
-        <Alert tone="warning" title="Paused · low deposit. Add funds to resume." action={<Button size="S" href={`/employer/wallet?return=${encodeURIComponent(`/employer/jobs/${j.public_id}`)}`}>Add funds</Button>} />
+        <Alert tone="warning" title="Paused · low balance. Add funds to resume." action={<Button size="S" href={`/employer/wallet?return=${encodeURIComponent(`/employer/jobs/${j.public_id}`)}`}>Add funds</Button>} />
       ) : null}
       {j.status === 'suspended' || (j.status === 'paused' && j.pause_reason === 'admin') ? <Alert tone="danger" title="Suspended by admin. Contact support." /> : null}
 

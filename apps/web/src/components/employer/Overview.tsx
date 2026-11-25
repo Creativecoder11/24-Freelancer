@@ -40,11 +40,10 @@ function OverviewBody({ d }: { d: OverviewData }) {
         <div data-stagger>
           <StatCard
             type="balance"
-            label="Deposit balance"
-            value={formatMoney(s.deposit_balance_usd)}
+            label="Balance"
+            value={formatMoney(s.available_usd)}
             countUp
             action={{ label: 'Add funds', href: '/employer/wallet' }}
-            meta={`Reserved for running jobs: ${formatMoney(s.reserved_usd)}`}
             className="h-full"
           />
         </div>
@@ -81,7 +80,7 @@ function OverviewBody({ d }: { d: OverviewData }) {
       {d.alerts.low_deposit.visible ? (
         <Alert
           tone="warning"
-          title="Low deposit balance"
+          title="Low balance"
           action={
             <NextLink href="/employer/wallet" className="whitespace-nowrap text-label-md font-semibold text-fg-warning hover:underline">
               Add funds
@@ -89,8 +88,8 @@ function OverviewBody({ d }: { d: OverviewData }) {
           }
         >
           {d.alerts.low_deposit.paused_jobs > 0
-            ? `${d.alerts.low_deposit.paused_jobs} ${d.alerts.low_deposit.paused_jobs === 1 ? 'job is' : 'jobs are'} paused because your deposit ran low. Add funds to resume.`
-            : `Your reserve can’t cover remaining slots. Add funds to keep jobs running.`}
+            ? `${d.alerts.low_deposit.paused_jobs} ${d.alerts.low_deposit.paused_jobs === 1 ? 'job is' : 'jobs are'} paused because your balance ran low. Add funds to resume.`
+            : `Your balance can’t cover the remaining slots. Add funds to keep jobs running.`}
         </Alert>
       ) : null}
       {d.alerts.decision_needed.visible ? (

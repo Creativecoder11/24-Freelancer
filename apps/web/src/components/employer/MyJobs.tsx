@@ -225,7 +225,7 @@ const canPromote = (j: JobListRow) => j.allowed_actions.includes('promote');
 
 function endsCell(j: JobListRow) {
   if (j.status === 'draft') return 'Not published';
-  if (j.status === 'paused') return j.pause_reason === 'low_deposit' ? 'Paused · low deposit' : j.pause_reason === 'admin' ? 'Paused by admin' : 'Paused';
+  if (j.status === 'paused') return j.pause_reason === 'low_deposit' ? 'Paused · low balance' : j.pause_reason === 'admin' ? 'Paused by admin' : 'Paused';
   if (j.status === 'suspended') return 'Suspended';
   if (j.status === 'completed' || j.status === 'cancelled') return `Ended ${formatDate(j.closed_at ?? j.ends_at)}`;
   return endsShort(j.ends_at);

@@ -154,8 +154,8 @@ export class KycService {
     if (reservations) add('active_reservations', `You have ${reservations} job${reservations === 1 ? '' : 's'} in progress.`, '/worker/tasks');
     if (submissions) add('open_submissions', `${submissions} submission${submissions === 1 ? ' is' : 's are'} still in review, needs a fix or is disputed.`, '/worker/tasks');
     if (jobs) add('open_jobs', `You have ${jobs} running or paused job${jobs === 1 ? '' : 's'}. Close them first.`, '/employer/jobs');
-    if (bal('employer_available').gte(0.01)) add('employer_balance', `Your deposit still holds ${formatMoney(bal('employer_available').toFixed(2))}.`, '/employer/wallet');
-    if (bal('employer_reserved').gte(0.01)) add('employer_reserved', `${formatMoney(bal('employer_reserved').toFixed(2))} is reserved for jobs.`, '/employer/jobs');
+    if (bal('employer_available').gte(0.01)) add('employer_balance', `You still have ${formatMoney(bal('employer_available').toFixed(2))} in your balance.`, '/employer/wallet');
+    if (bal('employer_reserved').gte(0.01)) add('employer_reserved', `${formatMoney(bal('employer_reserved').toFixed(2))} is still held for submitted work on your jobs.`, '/employer/jobs');
     return out;
   }
 

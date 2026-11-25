@@ -20,8 +20,7 @@ export function EmployerWallet() {
   if (!w.data)
     return (
       <div className="space-y-6" aria-busy="true" aria-label="Loading wallet">
-        <div className="grid gap-4 tablet:grid-cols-3">
-          <Skeleton.StatCard />
+        <div className="grid gap-4 tablet:grid-cols-2">
           <Skeleton.StatCard />
           <Skeleton.StatCard />
         </div>
@@ -134,19 +133,18 @@ function Body({ w }: { w: WalletSummary }) {
     start.mutate();
   };
 
-  const after = Number(w.deposit_balance_usd) + (Number.isFinite(n) ? n : 0);
+  const after = Number(w.available_usd) + (Number.isFinite(n) ? n : 0);
   const paused = af.deposits_paused || w.account_status !== 'active' || !choice;
 
   return (
     <div ref={root} className="space-y-6">
-      <div className="grid gap-4 tablet:grid-cols-2 desktop:grid-cols-3 desktop:gap-6">
+      <div className="grid gap-4 tablet:grid-cols-2 desktop:gap-6">
         <div data-stagger>
           <StatCard
             type="balance"
-            label="Deposit balance"
-            value={formatMoney(w.deposit_balance_usd)}
+            label="Balance"
+            value={formatMoney(w.available_usd)}
             countUp
-            meta={`Reserved for running jobs: ${formatMoney(w.reserved_usd)}`}
             action={{
               label: 'Add funds',
               onClick: () => {
@@ -158,17 +156,6 @@ function Body({ w }: { w: WalletSummary }) {
           />
         </div>
         <div data-stagger>
-          <StatCard
-            type="default"
-            label="Available for new jobs"
-            value={formatMoney(w.available_usd)}
-            countUp
-            badge={w.available_state === 'ready' ? { label: 'Ready', tone: 'success' } : { label: 'Add funds', tone: 'warning' }}
-            meta="Balance minus reserved budget"
-            className="h-full"
-          />
-        </div>
-        <div data-stagger className="tablet:col-span-2 desktop:col-span-1">
           <StatCard
             type="trend"
             label="Spent this month"
@@ -187,7 +174,7 @@ function Body({ w }: { w: WalletSummary }) {
           <h2 id="af-h" className="font-display text-h4 text-fg">
             Add funds
           </h2>
-          <p className="mt-1 text-body-sm text-fg-secondary">Deposits fund your jobs. Unused budget stays in your deposit.</p>
+          <p className="mt-1 text-body-sm text-fg-secondary">Deposits fund your jobs. Budget for unused slots comes back to your balance when the job closes or ends.</p>
           {paused ? (
             <p role="status" className="mt-4 rounded-[12px] bg-warning-subtle px-4 py-3 text-body-sm text-fg-warning">
               {af.deposits_paused ? 'Deposits are paused right now. Try again later.' : 'Deposits are paused on your account. Contact support.'}
@@ -399,9 +386,9 @@ function Body({ w }: { w: WalletSummary }) {
             </h2>
             <ol className="mt-4 space-y-5">
               {[
-                ['When you publish', 'The job’s max budget is reserved (reward × slots).'],
+                ['When you publish', 'The job’s full budget is deducted from your balance (reward × slots).'],
                 ['When you approve', 'The reward moves to the worker.'],
-                ['When a job closes', 'Any unused reserve returns to your deposit.'],
+                ['When a job closes or ends', 'Budget for unused slots comes back to your balance.'],
               ].map(([t, b], i) => (
                 <li key={t} className="flex gap-4">
                   <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-subtle text-label-sm font-semibold text-fg-brand">

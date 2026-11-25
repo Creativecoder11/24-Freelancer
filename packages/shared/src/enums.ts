@@ -99,7 +99,7 @@ export type JobStatus = (typeof JOB_STATUS.values)[number];
 
 export const PAUSE_REASON = defineEnum(['employer', 'low_deposit', 'admin'] as const, {
   employer: 'Paused by you',
-  low_deposit: 'Paused · low deposit',
+  low_deposit: 'Paused · low balance',
   admin: 'Paused by 24 Freelancing',
 });
 export type PauseReason = (typeof PAUSE_REASON.values)[number];
@@ -412,7 +412,7 @@ export const NOTIFICATION_PREF_KEY = defineEnum(
     tips_product_news: 'Tips and product news',
     new_submissions_digest: 'New submissions digest',
     review_window_ending: 'Review window ending soon',
-    low_deposit_balance: 'Low deposit balance',
+    low_deposit_balance: 'Low balance',
     monthly_spending_report: 'Monthly spending report',
   },
 );

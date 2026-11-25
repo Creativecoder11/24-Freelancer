@@ -41,7 +41,7 @@ export function endsShort(endsAt: string | null): string {
 /** Paused footer: "Paused by you · Oct 25", emp.pause.low_deposit, emp.pause.admin. */
 export function pausedLabel(reason: string | null, pausedAt: string | null, status?: string): string {
   if (status === 'suspended' || reason === 'admin') return 'Suspended by admin. Contact support.';
-  if (reason === 'low_deposit') return 'Paused · low deposit. Add funds to resume.';
+  if (reason === 'low_deposit') return 'Paused · low balance. Add funds to resume.';
   return `Paused by you${pausedAt ? ` · ${formatDate(pausedAt)}` : ''}`;
 }
 

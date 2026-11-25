@@ -66,7 +66,7 @@ export const PREFERENCE_DEFAULTS: Record<'worker' | 'employer', { pref_key: Noti
   employer: [
     { pref_key: 'new_submissions_digest', label: 'New submissions', helper: 'Daily summary at 9:00', on: true },
     { pref_key: 'review_window_ending', label: 'Review window ending soon', helper: 'When submissions are 12 h from auto-approval', on: true },
-    { pref_key: 'low_deposit_balance', label: 'Low deposit balance', helper: 'When reserve can’t cover remaining slots', on: true },
+    { pref_key: 'low_deposit_balance', label: 'Low balance', helper: 'When your balance can’t cover remaining slots', on: true },
     { pref_key: 'monthly_spending_report', label: 'Monthly spending report', helper: 'First day of each month', on: false },
   ],
 };

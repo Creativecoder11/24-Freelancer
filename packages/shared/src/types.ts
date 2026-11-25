@@ -136,7 +136,8 @@ export interface Me {
   has_worker_profile: boolean;
   has_employer_profile: boolean;
   employer: { business_name: string; initials: string; employer_verified: boolean } | null;
-  balances: { worker_available_usd: string; employer_deposit_total_usd: string };
+  /** employer_available_usd: main balance (a job's budget is deducted at publish). deposit_total adds money held for running jobs. */
+  balances: { worker_available_usd: string; employer_available_usd: string; employer_deposit_total_usd: string };
   badges: { worker_tasks: number; employer_submissions: number; notifications_unread: number };
   greeting_part: 'morning' | 'afternoon' | 'evening';
   livechat_identity_hash: string | null;

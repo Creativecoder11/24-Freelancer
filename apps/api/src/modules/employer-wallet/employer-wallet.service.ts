@@ -12,7 +12,7 @@ export const METHOD_LABEL: Record<string, string> = { crypto: 'Crypto', mobile_w
 const METHOD_SUB: Record<string, string> = { crypto: 'Binance Pay · USDT (TRC20)', mobile_wallet: 'bKash · Nagad · Rocket', card: 'Visa · Mastercard' };
 const TYPE_LABEL: Record<string, string> = {
   deposit: 'Deposit',
-  job_reserve: 'Reserve',
+  job_reserve: 'Job budget',
   job_spend: 'Job spend',
   task_reward: 'Job spend',
   job_release: 'Refund',
@@ -227,33 +227,36 @@ export class EmployerWalletService {
       GROUP BY t.id, j.public_id, j.title, d.public_ref, d.method
       ORDER BY t.occurred_at ASC, t.seq ASC`;
     let running = new Decimal(0);
-    type G = { key: string; rows: TxRow[]; amount: Decimal; balance: Decimal; last: TxRow };
+    type G = { key: string; rows: TxRow[]; amount: Decimal; balance: Decimal; last: TxRow; fromBalance: Decimal };
     const groups: G[] = [];
     const open = new Map<string, G>();
     for (const r of rows) {
       const na = dec(r.net_available);
       const nr = dec(r.net_reserved);
       const total = na.plus(nr);
-      running = running.plus(total);
-      const isMove = r.type === 'job_reserve' || r.type === 'job_release';
-      const amount = isMove ? na : total;
+      // The balance shown is the main (available) balance: posting a job deducts its budget, a
+      // refund adds it back. Approvals are paid from that already-deducted budget, so they show
+      // their amount without changing the balance.
+      running = running.plus(na);
+      const amount = na.isZero() ? total : na;
       const groupable = !detailed && (r.type === 'job_spend' || (r.type === 'platform_fee' && r.description_params?.kind !== 'boost' && r.description_params?.kind !== 'promotion' && r.description_params?.kind !== 'extra_workers')) && r.job_id;
       const key = groupable ? `${r.type}:${r.job_id}:${dhakaDate(r.occurred_at)}` : r.public_ref;
       let g = groupable ? open.get(key) : undefined;
       if (!g) {
-        g = { key, rows: [], amount: new Decimal(0), balance: running, last: r };
+        g = { key, rows: [], amount: new Decimal(0), balance: running, last: r, fromBalance: new Decimal(0) };
         groups.push(g);
         if (groupable) open.set(key, g);
       }
       g.rows.push(r);
       g.amount = g.amount.plus(amount);
+      g.fromBalance = g.fromBalance.plus(na);
       g.balance = running;
       g.last = r;
     }
     return groups
       .map((g) => {
         const r = g.last;
-        const style: StatementRow['amount_style'] = r.type === 'job_reserve' || r.type === 'job_release' ? 'neutral' : g.amount.gt(0) ? 'credit' : 'debit';
+        const style: StatementRow['amount_style'] = g.fromBalance.isZero() ? 'neutral' : g.amount.gt(0) ? 'credit' : 'debit';
         const abs = g.amount.abs();
         const sign = g.amount.lt(0) ? '−' : g.amount.gt(0) ? '+' : '';
         return {

@@ -93,7 +93,7 @@ export function DepositStatus({ refId }: { refId: string }) {
             </span>
           }
         />
-        {d.status === 'completed' ? <Row k="Deposit balance" v={formatMoney(d.balance.deposit_balance_usd)} /> : null}
+        {d.status === 'completed' ? <Row k="Balance" v={formatMoney(d.balance.available_usd)} /> : null}
       </dl>
       {stillPolling ? <p className="mt-3 text-body-xs text-fg-tertiary">Checking every few seconds…</p> : null}
       <div className="mt-6 flex flex-col-reverse gap-3 tablet:flex-row tablet:justify-center">

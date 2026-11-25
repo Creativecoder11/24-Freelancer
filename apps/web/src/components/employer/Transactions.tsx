@@ -12,7 +12,7 @@ import { ErrorPanel } from './common';
 const BASE_TYPES = [
   { value: 'all', label: 'All types' },
   { value: 'deposit', label: 'Deposit' },
-  { value: 'job_reserve', label: 'Reserve' },
+  { value: 'job_reserve', label: 'Job budget' },
   { value: 'job_spend', label: 'Job spend' },
   { value: 'job_release', label: 'Refund' },
 ];
@@ -97,7 +97,7 @@ export function Transactions() {
       <div className="grid grid-cols-1 gap-3 tablet:grid-cols-3 desktop:gap-6">
         <Summary label="Deposited this month" v={meta?.summary.deposited_this_month_usd} />
         <Summary label="Spent on approvals" v={meta?.summary.spent_on_approvals_usd} />
-        <Summary label="Returned to deposit" v={meta?.summary.returned_to_deposit_usd} green />
+        <Summary label="Refunded to balance" v={meta?.summary.returned_to_deposit_usd} green />
       </div>
 
       <div className="grid grid-cols-2 gap-3 tablet:grid-cols-[200px_200px_minmax(0,1fr)] tablet:items-end desktop:grid-cols-[220px_220px_320px_minmax(0,1fr)] desktop:gap-4">

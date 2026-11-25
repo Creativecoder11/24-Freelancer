@@ -259,9 +259,9 @@ function JobDefaultsSection({ d }: { d: JobDefaults }) {
           control={<Switch label="Allow resubmission after a rejection" labelHidden checked={v.default_allow_resubmission} onCheckedChange={(x) => void save({ default_allow_resubmission: x })} />}
         />
         <SettingRow
-          title="Pause jobs when deposit runs low"
+          title="Pause jobs when balance runs low"
           description="Prevents overspending; resumes when you add funds."
-          control={<Switch label="Pause jobs when deposit runs low" labelHidden checked={v.default_pause_on_low_deposit} onCheckedChange={(x) => void save({ default_pause_on_low_deposit: x })} />}
+          control={<Switch label="Pause jobs when balance runs low" labelHidden checked={v.default_pause_on_low_deposit} onCheckedChange={(x) => void save({ default_pause_on_low_deposit: x })} />}
         />
       </div>
     </Section>
