@@ -524,7 +524,7 @@ const base = (id: string | null) => (id ? `/employer/jobs/${id}/edit` : '/employ
 const STEP_FIELDS: Record<number, string[]> = {
   1: ['target_zone', 'target_countries', 'excluded_countries'],
   2: ['category', 'subcategory'],
-  3: ['title', 'note', 'time_per_task', 'steps', 'task_link_url', 'proof_requirements', 'proof_instructions', 'thumbnail_upload_id'],
+  3: ['title', 'time_per_task', 'steps', 'task_link_url', 'proof_requirements', 'proof_instructions', 'thumbnail_upload_id'],
   4: ['reward_usd', 'slots_total', 'open_for_days', 'eligibility', 'min_approval_rate', 'review_window_hours', 'starts_at'],
 };
 
@@ -726,7 +726,7 @@ function StepCategory({
   );
 }
 
-/** Step 3 · Job information: title, note, steps, proof, image. */
+/** Step 3 · Job information: title, steps, proof, image. */
 function StepInfo({ form, set, patch, errors, locked }: { form: WizardForm; set: SetFn; patch: PatchFn; errors: Record<string, string>; locked: Set<string> }) {
   const titleLen = [...form.title].length;
   const toggle = (t: ProofType, on: boolean) => set('proof_types', on ? PROOF_OPTIONS.map((o) => o.value).filter((v) => v === t || form.proof_types.includes(v)) : form.proof_types.filter((x) => x !== t));
@@ -748,19 +748,6 @@ function StepInfo({ form, set, patch, errors, locked }: { form: WizardForm; set:
           disabled={locked.has('title')}
           trimOnBlur={false}
           id="wz-title"
-        />
-      </div>
-      <div data-wz>
-        <Textarea
-          label="Note"
-          optional
-          value={form.note}
-          softMax={300}
-          onChange={(e) => set('note', e.target.value)}
-          helper="Shown to workers above the steps."
-          placeholder="e.g. Use a desktop browser. Mobile screenshots are hard to check."
-          error={errors.note}
-          disabled={locked.has('note')}
         />
       </div>
       <div data-wz>
@@ -1052,7 +1039,6 @@ function StepReview({
       step: 3,
       rows: [
         ['Title', form.title || '—'],
-        ...(form.note.trim() ? ([['Note', form.note.trim().length > 80 ? `${form.note.trim().slice(0, 79)}…` : form.note.trim()]] as [string, string][]) : []),
         ['Steps', `${steps} numbered ${steps === 1 ? 'step' : 'steps'} · ${timeLabel(form.time_per_task)}`],
         ['Task link', link ? (link.length > 36 ? `${link.slice(0, 35)}…` : link) : 'No link'],
         ['Proof', proofLabel(form.proof_types, form.screenshot_count)],
@@ -1165,7 +1151,6 @@ function Rail({
           <h3 id="wws-h" className="text-label-md text-fg">
             Workers will see
           </h3>
-          {form.note.trim() ? <p className="mt-3 rounded-[10px] bg-warning-subtle px-3 py-2.5 text-body-sm text-fg-secondary">{form.note.trim()}</p> : null}
           <ul className="mt-3 space-y-2">
             {form.steps.filter((s) => s.body.trim()).length ? (
               form.steps
