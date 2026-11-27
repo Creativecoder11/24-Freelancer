@@ -182,9 +182,9 @@ export function ReferralBand({ rate }: { rate: number }) {
       <div data-reveal className="grid gap-10 overflow-hidden rounded-[28px] bg-inverse p-8 tablet:p-12 desktop:grid-cols-[1fr_456px] desktop:items-center">
         <div>
           <p className="text-overline uppercase text-fg-brand-inverse">Referral program</p>
-          <h2 className="mt-3 font-display text-[28px] font-bold leading-9 text-fg-inverse tablet:text-h2">Invite friends. Earn {pct}% of what they earn.</h2>
+          <h2 className="mt-3 font-display text-[28px] font-bold leading-9 text-fg-inverse tablet:text-h2">Invite friends. Earn {pct}% of their first task.</h2>
           <p className="mt-4 max-w-[520px] text-body-md text-fg-inverse-secondary">
-            From the moment your friend completes their first task, you get {pct}% commission on every approved task reward they earn — added to your balance automatically.
+            When a friend you invite gets their first task approved, you get {pct}% of that task’s reward — a one-time bonus added to your balance automatically.
           </p>
           <Button href="/referral-program" size="L" className="mt-8 min-w-[216px]">
             Get your invite link
@@ -193,7 +193,7 @@ export function ReferralBand({ rate }: { rate: number }) {
         <div data-reveal-group className="space-y-4">
           {[
             ['Friend’s first task approved', 0.4, 0.4 * rate],
-            ['Friend earns from tasks', 10, 10 * rate],
+            ['10 friends’ first tasks', 4, 4 * rate],
           ].map(([label, base, earn]) => (
             <div data-reveal-item key={label as string} className="flex items-center justify-between gap-4 rounded-card bg-inverse-raised px-5 py-4">
               <div className="min-w-0">

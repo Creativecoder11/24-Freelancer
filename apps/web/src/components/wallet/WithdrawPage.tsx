@@ -59,7 +59,9 @@ export function WithdrawPage() {
     setType(t);
     setMethodId(def?.id ?? null);
     const cfg = configs.find((c) => c.method_type === t);
-    if (cfg && wallet.data && Number(wallet.data.available_usd) < 10) setAmount(cfg.min_usd);
+    // Small balance (below the method's largest quick amount, from payout settings): start at the minimum.
+    const topQuick = cfg ? Math.max(Number(cfg.min_usd), ...cfg.quick_amounts_usd.map(Number)) : 0;
+    if (cfg && wallet.data && Number(wallet.data.available_usd) < topQuick) setAmount(cfg.min_usd);
   }, [pm.data, saved, configs, type, wallet.data]);
 
   const cfg = configs.find((c) => c.method_type === type);

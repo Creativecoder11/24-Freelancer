@@ -188,6 +188,8 @@ export class ApprovalService {
   /**
    * Safety net for the after-commit step (Doc 08 §9.4 "runs in a separate job"): approved tasks
    * from the last 7 days by referred workers that have no commission row yet get credited now.
+   * First-task-only rule: only each friend's first approved task, and only while their referral
+   * has no task commission yet — so later tasks are never re-picked every run.
    */
   @Cron(CronExpression.EVERY_10_MINUTES, { name: 'referrals.task-sweep' })
   async referralSweep() {
@@ -197,6 +199,8 @@ export class ApprovalService {
       JOIN referrals r ON r.referred_user_id = s.worker_user_id
       LEFT JOIN referral_commissions c ON c.submission_id = s.id
       WHERE s.status = 'approved' AND s.decided_at >= ${since} AND c.id IS NULL
+        AND s.id = (SELECT s2.id FROM submissions s2 WHERE s2.worker_user_id = s.worker_user_id AND s2.status = 'approved' ORDER BY s2.decided_at ASC NULLS LAST, s2.id ASC LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM referral_commissions c2 WHERE c2.referral_id = r.id AND c2.source_type = 'task')
       LIMIT 200`;
     for (const r of rows) {
       await this.creditReferral({ submissionId: r.id, workerUserId: r.worker_user_id, rewardUsd: dec(r.reward_usd) }).catch((e) => this.log.error(`referral sweep ${r.id}: ${String(e)}`));

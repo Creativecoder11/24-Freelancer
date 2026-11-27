@@ -21,10 +21,11 @@ export type CommissionResult =
   | { result: 'skipped'; reason: string };
 
 /**
- * Referral commission (Doc 08 §9; Canonical D-10, C-28). One commission per source event,
- * `rate × base` rounded half-up to 6 dp, from the platform's `referral_expense` account to the
- * referrer's `worker_earnings`. Idempotent on `referral:task:{submission_id}` /
- * `referral:deposit:{deposit_id}` and on the unique source index of `referral_commissions`.
+ * Referral commission (Doc 08 §9; Canonical D-10, C-28), first-task-only rule: the referrer earns
+ * `referral_task_rate` × the reward of the friend's FIRST approved task, once per referral.
+ * Later tasks and deposits earn nothing. Paid from the platform's `referral_expense` account to the
+ * referrer's `worker_earnings`, rounded half-up to 6 dp. Idempotent on `referral:task:{submission_id}`
+ * and on the unique source index of `referral_commissions`.
  * Always runs after the source commit; a failure never undoes the approval or the deposit.
  */
 @Injectable()
@@ -56,18 +57,30 @@ export class ReferralCreditService {
 
   async credit(src: CommissionSource): Promise<CommissionResult> {
     if (!(await this.settings.get<boolean>('referral_enabled', true))) return { result: 'skipped', reason: 'disabled' };
+    // First-task-only rule: deposits never earn referral commission.
+    if (src.source === 'deposit') return { result: 'skipped', reason: 'deposit_not_eligible' };
     const referral = await this.db.referral.findUnique({ where: { referredUserId: src.friendUserId } });
     if (!referral) return { result: 'skipped', reason: 'no_referral' };
 
-    const key = src.source === 'task' ? `referral:task:${src.submissionId}` : `referral:deposit:${src.depositId}`;
-    const existing = await this.db.referralCommission.findFirst({
-      where: src.source === 'task' ? { submissionId: src.submissionId } : { depositId: src.depositId },
-      select: { id: true },
-    });
+    // Only the friend's first approved task counts, and only once per referral.
+    const [first, otherTask] = await Promise.all([
+      this.db.submission.findFirst({
+        where: { workerUserId: src.friendUserId, status: 'approved' },
+        orderBy: [{ decidedAt: 'asc' }, { id: 'asc' }],
+        select: { id: true },
+      }),
+      this.db.referralCommission.findFirst({
+        where: { referralId: referral.id, sourceType: 'task', NOT: { submissionId: src.submissionId } },
+        select: { id: true },
+      }),
+    ]);
+    if (!first || first.id !== src.submissionId || otherTask) return { result: 'skipped', reason: 'not_first_task' };
+
+    const key = `referral:task:${src.submissionId}`;
+    const existing = await this.db.referralCommission.findFirst({ where: { submissionId: src.submissionId }, select: { id: true } });
     if (existing) return { result: 'skipped', reason: 'duplicate' };
 
-    const rateKey = src.source === 'task' ? 'referral_task_rate' : 'referral_deposit_rate';
-    const rate = new Decimal(String(await this.settings.get(rateKey, '0.05')));
+    const rate = new Decimal(String(await this.settings.get('referral_task_rate', '0.05')));
     const base = new Decimal(String(src.baseUsd));
     const amount = base.mul(rate).toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
     if (amount.lte(0) || rate.lte(0) || rate.gte(1)) return { result: 'skipped', reason: 'zero' };
@@ -85,8 +98,8 @@ export class ReferralCreditService {
       referrerUserId: referral.referrerUserId,
       referredUserId: src.friendUserId,
       sourceType: src.source,
-      submissionId: src.source === 'task' ? src.submissionId : null,
-      depositId: src.source === 'deposit' ? src.depositId : null,
+      submissionId: src.submissionId,
+      depositId: null,
       baseAmount: new Prisma.Decimal(base.toFixed(6)),
       rate: new Prisma.Decimal(rate.toFixed(6)),
       amount: new Prisma.Decimal(amount.toFixed(6)),
@@ -134,19 +147,17 @@ export class ReferralCreditService {
         return { c, t, masked };
       });
 
-      if (src.source === 'deposit') {
-        // Deposit commissions notify now; task commissions roll into the weekly digest (Doc 08 §9.3).
-        await this.core.notify({
-          userId: referral.referrerUserId,
-          audience: 'worker',
-          category: 'referrals',
-          type: 'referral_commission',
-          title: `Referral commission · +$${amount.toDecimalPlaces(2, Decimal.ROUND_DOWN).toFixed(2)}`,
-          body: `5% of a deposit by ${out.masked}.`,
-          linkPath: '/worker/referral',
-          dedupeKey: `referral-deposit:${src.depositId}`,
-        });
-      }
+      // A one-time bonus, so the referrer hears about it straight away.
+      await this.core.notify({
+        userId: referral.referrerUserId,
+        audience: 'worker',
+        category: 'referrals',
+        type: 'referral_commission',
+        title: `Referral bonus · +$${amount.toDecimalPlaces(2, Decimal.ROUND_DOWN).toFixed(2)}`,
+        body: `${rate.mul(100).toDecimalPlaces(2).toString()}% of ${out.masked}’s first task.`,
+        linkPath: '/worker/referral',
+        dedupeKey: `referral-task:${src.submissionId}`,
+      });
       return { result: 'credited', amount: amount.toFixed(6), ledgerTxId: out.t.id, commissionId: out.c.id };
     } catch (e) {
       // A concurrent run inserted the same source first: the unique index makes this a no-op.

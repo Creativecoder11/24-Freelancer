@@ -2,7 +2,7 @@
 /** SCR-REF-01 Referral dashboard (Figma 43:477). */
 import { useRef } from 'react';
 import { formatDate, formatMoney } from '@24f/shared';
-import { Button, EmptyState, Icon, Link, Skeleton, StatCard, gsap, toast, useGSAP, MOTION_CONDITIONS } from '@24f/ui';
+import { Button, EmptyState, Icon, Link, Skeleton, StatCard, cn, gsap, toast, useGSAP, MOTION_CONDITIONS } from '@24f/ui';
 import { useWorkerHeader } from '@/components/worker/shell';
 import { LoadError } from '@/components/worker/ui';
 import { useReferralSummary, type Friend, type ReferralSummary } from './api';
@@ -35,20 +35,21 @@ export function ReferralPage() {
   useWorkerHeader(HEADER);
   const q = useReferralSummary();
   const s = q.data;
+  const hasDeposits = Number(s?.stats.from_deposits_usd ?? 0) > 0;
   if (q.isError) return <LoadError error={q.error} onRetry={() => q.refetch()} body={q.error.code === 'FEATURE_DISABLED' ? 'The referral program is paused right now.' : undefined} />;
 
   return (
     <div className="flex w-full flex-col gap-6">
       {s ? <Hero s={s} /> : <Skeleton height={272} radius={20} />}
 
-      <div className="grid grid-cols-2 gap-4 tablet:grid-cols-3 desktop:grid-cols-5">
+      <div className={cn('grid grid-cols-2 gap-4 tablet:grid-cols-3', hasDeposits ? 'desktop:grid-cols-5' : 'desktop:grid-cols-4')}>
         {s ? (
           <>
             <StatCard type="default" compact label="Friends joined" value={String(s.stats.friends_joined)} countUp />
             <StatCard type="default" compact label="Active friends" value={String(s.stats.active_friends)} countUp />
-            <StatCard type="default" compact label="From their tasks" value={formatMoney(s.stats.from_tasks_usd)} countUp />
-            <StatCard type="default" compact label="From their deposits" value={formatMoney(s.stats.from_deposits_usd)} countUp />
-            <StatCard type="trend" compact label="Total earned" value={formatMoney(s.stats.total_earned_usd)} trendPercent={null} valueTone="success" countUp className="col-span-2 tablet:col-span-1" />
+            <StatCard type="default" compact label="From first tasks" value={formatMoney(s.stats.from_tasks_usd)} countUp />
+            {hasDeposits ? <StatCard type="default" compact label="From past deposits" value={formatMoney(s.stats.from_deposits_usd)} countUp /> : null}
+            <StatCard type="trend" compact label="Total earned" value={formatMoney(s.stats.total_earned_usd)} trendPercent={null} valueTone="success" countUp className={hasDeposits ? 'col-span-2 tablet:col-span-1' : undefined} />
           </>
         ) : (
           [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={104} radius={16} />)
@@ -72,7 +73,7 @@ export function ReferralPage() {
               ))}
             </div>
           ) : s.top_friends.length === 0 ? (
-            <EmptyState compact icon="users" title="No friends yet" body="Share your link. You earn 5% of their approved task rewards, starting from their first task." action={<Button size="S" onClick={() => copyInvite(s.link)}>Copy link</Button>} />
+            <EmptyState compact icon="users" title="No friends yet" body="Share your link. You earn 5% of each friend’s first approved task." action={<Button size="S" onClick={() => copyInvite(s.link)}>Copy link</Button>} />
           ) : (
             <ul className="mt-2 divide-y divide-line-subtle">
               {s.top_friends.map((f) => (
@@ -100,7 +101,7 @@ export function ReferralPage() {
                 ))}
               </dl>
               <p className="mt-4 border-t border-line-subtle pt-4 text-body-xs text-fg-tertiary">
-                Commission: {s.rate_label} of approved task rewards, starting from your friend’s first task. Self-referrals and duplicate accounts don’t earn commission.
+                Commission: {s.rate_label} of each friend’s first approved task, once per friend. Later tasks and deposits don’t earn commission. Self-referrals and duplicate accounts don’t earn commission.
               </p>
             </>
           ) : (
@@ -133,10 +134,10 @@ function Hero({ s }: { s: ReferralSummary }) {
           Your referral program
         </p>
         <h2 data-hero id="ref-hero" className="mt-3 font-display text-h2 text-fg-inverse">
-          Invite friends. Earn {s.rate_label} of what they earn.
+          Invite friends. Earn {s.rate_label} of their first task.
         </h2>
         <p data-hero className="mt-4 max-w-[440px] text-body-lg text-fg-inverse-secondary">
-          From your friend’s first completed task, you get {s.rate_label} commission on every approved task reward they earn — added to your balance automatically.
+          When a friend you invite gets their first task approved, you get {s.rate_label} of that task’s reward — a one-time bonus added to your balance automatically.
         </p>
       </div>
       <div data-hero className="min-w-0">
@@ -173,8 +174,8 @@ function Hero({ s }: { s: ReferralSummary }) {
 function HowItWorks({ pct }: { pct: string }) {
   const steps = [
     ['Share your link', 'Send it to friends, or post it where people look for online work.'],
-    ['They complete their first task', 'Your code is filled in for them. Commission starts once their first task is approved.'],
-    [`You earn ${pct}`, 'Of every approved task reward they earn, straight into your balance.'],
+    ['They complete their first task', 'Your code is filled in for them. They earn exactly what they would without it.'],
+    [`You earn ${pct}`, 'Of the reward for their first approved task — once per friend, straight into your balance.'],
   ];
   return (
     <section aria-labelledby="how" className="rounded-card border border-line bg-surface p-5 shadow-xs tablet:p-7">

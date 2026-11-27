@@ -133,8 +133,8 @@ INSERT INTO platform_settings (key, value, value_type, description, source_ref, 
  ('phash_duplicate_distance',      '6',      'integer', 'pHash distance that flags duplicate_suspected.', 'A-26', false),
  -- Referral
  ('referral_enabled',              'true',   'boolean', 'Master switch for the referral program.', 'D-10', true),
- ('referral_task_rate',            '0.05',   'number',  'Commission on the friend''s approved task rewards.', 'D-10', true),
- ('referral_deposit_rate',         '0.05',   'number',  'Commission on the friend''s completed deposits.', 'D-10', true),
+ ('referral_task_rate',            '0.05',   'number',  'One-time commission on the reward of the friend''s first approved task.', 'D-10', true),
+ ('referral_deposit_rate',         '0',      'number',  'Not used: deposits do not earn referral commission (first-task-only rule).', 'D-10', true),
  ('referral_reminder_cooldown_hours', '168', 'integer', 'Minimum gap between "Send a reminder" uses per friend.', 'NEW-05-08', false),
  -- Withdrawals
  ('withdrawal_daily_max_usd',      '500.00', 'number',  'Per-user withdrawal total per rolling 24 h.', 'D-25', true),

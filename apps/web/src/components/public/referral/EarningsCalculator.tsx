@@ -4,12 +4,12 @@ import { RangeSlider, gsap, useGSAP, prefersReducedMotion } from '@24f/ui';
 import { formatMoney } from '@24f/shared';
 
 /**
- * Earnings example (Figma 24:1490): friends 1–50, monthly earnings $1–$100.
- * result = friends × earnings × rate; the big number tweens with GSAP on change.
+ * Earnings example (Figma 24:1490): friends 1–50, first-task reward $0.05–$2.00.
+ * First-task-only rule: result = friends × first-task reward × rate; the big number tweens with GSAP on change.
  */
 export function EarningsCalculator({ rate }: { rate: number }) {
   const [friends, setFriends] = useState(5);
-  const [earnings, setEarnings] = useState(10);
+  const [earnings, setEarnings] = useState(0.4);
   const result = Math.round(friends * earnings * rate * 100) / 100;
   const pct = +(rate * 100).toFixed(2);
   const out = useRef<HTMLParagraphElement>(null);
@@ -43,12 +43,12 @@ export function EarningsCalculator({ rate }: { rate: number }) {
           <RangeSlider mode="single" label="Friends who join" value={friends} onChange={setFriends} min={1} max={50} step={1} format={(v) => String(v)} />
           <RangeSlider
             mode="single"
-            label="Each friend’s monthly task earnings"
+            label="Each friend’s first task reward"
             value={earnings}
             onChange={setEarnings}
-            min={1}
-            max={100}
-            step={1}
+            min={0.05}
+            max={2}
+            step={0.05}
             format={(v) => formatMoney(v.toFixed(2))}
           />
         </div>
@@ -58,12 +58,12 @@ export function EarningsCalculator({ rate }: { rate: number }) {
         <p ref={out} aria-hidden className="mt-1 origin-left font-display text-num-2xl tabular-nums text-fg-money-bright">
           {firstText}
         </p>
-        <p className="mt-2 text-body-sm text-fg-inverse-secondary">per month from tasks</p>
+        <p className="mt-2 text-body-sm text-fg-inverse-secondary">one-time, from their first tasks</p>
         <div className="mt-5 border-t border-line-inverse pt-5">
           <p aria-live="polite" className="text-label-sm font-semibold text-fg-inverse tabular-nums">
             {friends} {friends === 1 ? 'friend' : 'friends'} × {formatMoney(earnings.toFixed(2))} × {pct}% = {formatMoney(result.toFixed(2))}
           </p>
-          <p className="mt-2 text-body-xs text-fg-inverse-secondary">Commission starts from each friend’s first approved task.</p>
+          <p className="mt-2 text-body-xs text-fg-inverse-secondary">Paid once per friend. Later tasks and deposits don’t earn commission.</p>
         </div>
       </div>
     </div>

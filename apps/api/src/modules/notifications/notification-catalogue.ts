@@ -42,7 +42,7 @@ export const NOTIFICATION_CATALOGUE = {
   withdrawal_cancelled: { audience: 'worker', category: 'payments', title: 'Withdrawal cancelled', body: '{amount} is back in your balance.', link: '/worker/wallet/withdrawals?ref={wd_ref}', mandatory: true, prefKey: 'payout_updates' },
 
   // ----- Referral -----
-  referral_commission: { audience: 'worker', category: 'referrals', title: 'Referral commission · +{amount}', body: '5% of tasks completed by {friend} this week.', link: '/worker/referral', prefKey: 'referral_earnings', email: true },
+  referral_commission: { audience: 'worker', category: 'referrals', title: 'Referral bonus · +{amount}', body: '5% of {friend}’s first task.', link: '/worker/referral', prefKey: 'referral_earnings', email: true },
   referral_friend_joined: { audience: 'worker', category: 'referrals', title: 'A friend joined with your link', body: '{friend} signed up. You’ll earn when they start.', link: '/worker/referral', prefKey: 'referral_earnings' },
 
   // ----- Employer -----
