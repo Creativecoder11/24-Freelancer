@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: 'About & contact',
   description:
     '24 Freelancing is a microtask marketplace that connects clients with workers worldwide. Learn what we stand for, or send us a message.',
+  alternates: { canonical: '/about' },
 };
 
 const VALUES = [

@@ -23,20 +23,24 @@ export class EmployerService {
     return this.core.db;
   }
 
-  private async reservedAccountId(userId: string) {
-    const acc = await this.db.walletAccount.findFirst({ where: { ownerUserId: userId, kind: 'employer_reserved' }, select: { id: true } });
-    return acc?.id ?? null;
+  /**
+   * Both employer accounts. Approvals and their fees are paid from the reserve, but promotions, the
+   * extra-worker fee and admin-paid approvals come straight out of the available balance.
+   */
+  private async employerAccountIds(userId: string) {
+    const accs = await this.db.walletAccount.findMany({ where: { ownerUserId: userId, kind: { in: ['employer_reserved', 'employer_available'] } }, select: { id: true } });
+    return accs.map((a) => a.id);
   }
 
-  /** Spend on the reserved account (job_spend + platform_fee) and approvals in [from, to). */
+  /** Spend (job_spend + platform_fee on either employer account) and approvals in [from, to). */
   async spendBetween(userId: string, from: Date, to: Date) {
-    const rid = await this.reservedAccountId(userId);
-    if (!rid) return { amount: new Decimal(0), tasks: 0 };
+    const ids = await this.employerAccountIds(userId);
+    if (!ids.length) return { amount: new Decimal(0), tasks: 0 };
     const rows = await this.db.$queryRaw<{ amount: Prisma.Decimal | null; tasks: number }[]>`
       SELECT -COALESCE(SUM(e.amount), 0) AS amount,
              COUNT(*) FILTER (WHERE e.display_type = 'job_spend')::int AS tasks
       FROM ledger_entries e
-      WHERE e.account_id = ${rid}::uuid AND e.display_type IN ('job_spend', 'platform_fee')
+      WHERE e.account_id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) AND e.display_type IN ('job_spend', 'platform_fee')
         AND e.created_at >= ${from} AND e.created_at < ${to}`;
     return { amount: dec(rows[0]?.amount), tasks: rows[0]?.tasks ?? 0 };
   }
@@ -138,7 +142,7 @@ export class EmployerService {
   }
 
   async spending(userId: string, range: '7d' | '30d' | '90d') {
-    const rid = await this.reservedAccountId(userId);
+    const ids = await this.employerAccountIds(userId);
     const now = new Date();
     type Bar = { label: string; date: string; from: Date; to: Date; amount: Decimal; tasks: number };
     const bars: Bar[] = [];
@@ -163,11 +167,11 @@ export class EmployerService {
         });
       }
     }
-    if (rid) {
+    if (ids.length) {
       const rows = await this.db.$queryRaw<{ at: Date; amount: Prisma.Decimal; is_spend: boolean }[]>`
         SELECT e.created_at AS at, -e.amount AS amount, (e.display_type = 'job_spend') AS is_spend
         FROM ledger_entries e
-        WHERE e.account_id = ${rid}::uuid AND e.display_type IN ('job_spend', 'platform_fee') AND e.created_at >= ${bars[0]!.from}`;
+        WHERE e.account_id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) AND e.display_type IN ('job_spend', 'platform_fee') AND e.created_at >= ${bars[0]!.from}`;
       for (const r of rows) {
         const b = bars.find((x) => r.at >= x.from && r.at < x.to);
         if (!b) continue;

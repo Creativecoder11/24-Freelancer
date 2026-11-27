@@ -88,9 +88,11 @@ export class AdminDepositsService {
     const [rows, total, pending, needsReview, waiting] = await Promise.all([
       this.db.deposit.findMany({ where, orderBy: q.status === 'pending' ? { initiatedAt: 'asc' } : { initiatedAt: 'desc' }, skip: p.skip, take: p.take, include: { employerUser: { select: { publicId: true, employerProfile: { select: { businessName: true } } } } } }),
       this.db.deposit.count({ where }),
-      this.db.deposit.count({ where: { status: { in: ['initiated', 'pending'] } } }),
+      // Same filter as the Pending tab (and the dashboard): abandoned checkouts (initiated) aren't waiting on us.
+      this.db.deposit.count({ where: { status: 'pending' } }),
       this.db.deposit.count({ where: { needsReview: true } }),
-      this.db.adminPendingAction.count({ where: { objectType: OBJ, status: 'pending' } }),
+      // "Needs my approval" lists only actions another admin proposed, so count the same way.
+      this.db.adminPendingAction.count({ where: { objectType: OBJ, status: 'pending', createdByAdminId: { not: ctx.id } } }),
     ]);
     const pend = await this.dual.openMany(OBJ, rows.map((r) => r.id));
     return paged(

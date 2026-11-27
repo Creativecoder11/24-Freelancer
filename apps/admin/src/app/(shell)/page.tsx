@@ -19,7 +19,7 @@ type Card = { key: string; label: string; href: string; perms: string[]; sub?: (
 const QUEUES: Card[] = [
   { key: 'kyc_pending', label: 'KYC to review', href: '/kyc', perms: ['kyc.read_status', 'kyc.read'], sub: (q) => (q.kyc_overdue ? `${q.kyc_overdue} overdue` : undefined) },
   { key: 'employer_verification', label: 'Employer verification', href: '/employers/verification', perms: ['employers.verify'] },
-  { key: 'withdrawals_requested', label: 'Withdrawals requested', href: '/withdrawals?status=requested', perms: ['withdrawals.read_masked', 'withdrawals.read'] },
+  { key: 'withdrawals_requested', label: 'Withdrawals requested', href: '/withdrawals?tab=all&status=requested', perms: ['withdrawals.read_masked', 'withdrawals.read'] },
   { key: 'withdrawals_processing', label: 'Withdrawals processing', href: '/withdrawals?tab=processing', perms: ['withdrawals.read_masked', 'withdrawals.read'] },
   { key: 'disputes_open', label: 'Disputes open', href: '/disputes', perms: ['disputes.read', 'disputes.resolve'], sub: (q) => (q.disputes_overdue ? `${q.disputes_overdue} overdue` : undefined) },
   { key: 'reports_open', label: 'Job reports', href: '/reports', perms: ['reports.read'] },
@@ -89,7 +89,7 @@ export default function DashboardPage() {
             <Kpi label="Median time to paid" value={s.withdrawal_median_hours_7d ?? 0} display={s.withdrawal_median_hours_7d == null ? '—' : `${s.withdrawal_median_hours_7d} h`} sub="Target under 24 h" />
             <Kpi label="Running jobs" value={s.jobs_running ?? 0} sub=" " />
             <Kpi label="Waiting for review" value={s.in_review_total ?? 0} sub=" " />
-            {s.fx_age_hours !== undefined ? <Kpi label="BDT rate age" value={s.fx_age_hours ?? 0} display={s.fx_age_hours == null ? '—' : `${s.fx_age_hours} h`} tone={(s.fx_age_hours ?? 0) >= 24 ? 'danger' : undefined} sub={<NextLink href="/settings?tab=fx" className="text-fg-brand hover:underline">Rates</NextLink>} /> : null}
+            {s.fx_age_hours !== undefined ? <Kpi label="BDT rate age" value={s.fx_age_hours ?? 0} display={s.fx_age_hours == null ? '—' : `${s.fx_age_hours} h`} tone={s.fx_can_expire && (s.fx_age_hours ?? 0) >= 24 ? 'danger' : undefined} sub={<NextLink href="/settings?tab=fx" className="text-fg-brand hover:underline">Rates</NextLink>} /> : null}
           </div>
         </section>
         <section aria-labelledby="tr-h" className="grid gap-4 desktop:grid-cols-2">

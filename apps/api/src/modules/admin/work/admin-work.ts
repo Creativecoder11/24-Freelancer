@@ -7,6 +7,7 @@ import { PrismaService } from '../../../common/prisma.service';
 import { ApiError } from '../../../common/api-error';
 import { EmployerCore, unitCost } from '../../employer/employer-common';
 import { ApprovalService } from '../../review/approval.service';
+import { refreshRatesFor } from '../../review/approval-rate';
 import { UploadsService } from '../../uploads/uploads.service';
 import { AdminGuard, AdminAuditInterceptor } from '../core/admin.guard';
 import { Admin, Perms, type AdminCtx } from '../core/admin-context';
@@ -83,6 +84,7 @@ export class AdminWorkService {
     const leave = sub.status === 'needs_fix' ? { countNeedsFix: { decrement: 1 } } : { countRejected: { decrement: 1 } };
     await tx.job.update({ where: { id: job.id }, data: { ...leave, countApproved: { increment: 1 } } });
     await tx.submission.update({ where: { id: sub.id }, data: { status: 'approved', decidedAt: now, finalAt: now, decisionSource: 'admin', decidedByAdminId: ctx.id, rejectionReasonCode: null, rejectionReasonText: null, fixAllowed: null, resubmitDeadline: null, paidLedgerTxId: ltx.id, disputeOpen: false } });
+    await refreshRatesFor(tx, sub);
     await tx.submissionAttempt.updateMany({ where: { submissionId: sub.id, attemptNo: sub.currentAttemptNo }, data: { decision: 'approved', decidedAt: now } });
     await tx.submissionEvent.createMany({ data: [ { reservationId: sub.reservationId, submissionId: sub.id, eventType: 'approved', actorType: 'admin', actorAdminId: ctx.id }, { reservationId: sub.reservationId, submissionId: sub.id, eventType: 'paid_to_balance', actorType: 'admin', actorAdminId: ctx.id, data: { amount: reward.toFixed(6), paid_from: from } } ] });
     return { from, ltx, outcome: { alreadyApproved: false, submissionId: sub.id, ref: sub.publicRef, rewardUsd: reward, feeUsd: dec(sub.feeUsd), ledgerRef: ltx.publicRef ?? null, jobId: job.id, workerUserId: sub.workerUserId } };
@@ -238,6 +240,7 @@ export class AdminWorkService {
       const job = await this.core.lockJob(tx, s.jobId);
       const now = new Date();
       await tx.submission.update({ where: { id: s.id }, data: { status: 'rejected', decidedAt: now, finalAt: now, decisionSource: 'admin', decidedByAdminId: ctx.id, rejectionReasonCode: code, rejectionReasonText: reason, fixAllowed: false, resubmitDeadline: null } });
+      await refreshRatesFor(tx, s);
       await tx.submissionAttempt.updateMany({ where: { submissionId: s.id, attemptNo: s.currentAttemptNo }, data: { decision: 'rejected', decidedAt: now, rejectionReasonCode: code, rejectionReasonText: reason } });
       await tx.job.update({ where: { id: job.id }, data: { ...(s.status === 'in_review' ? { countInReview: { decrement: 1 } } : { countNeedsFix: { decrement: 1 } }), countRejected: { increment: 1 } } });
       if (job.status !== 'running' && job.status !== 'paused') {
@@ -256,6 +259,7 @@ export class AdminWorkService {
     if (s.status !== 'approved') return;
     const now = new Date();
     await tx.submission.update({ where: { id: s.id }, data: { status: 'rejected', decidedAt: now, finalAt: now, decisionSource: 'admin', decidedByAdminId: ctx.id, rejectionReasonCode: payload.reason_code as 'other', rejectionReasonText: payload.reason.slice(0, 300) } });
+    await refreshRatesFor(tx, s);
     await tx.job.update({ where: { id: s.jobId }, data: { countApproved: { decrement: 1 }, countRejected: { increment: 1 } } });
     const comms = await tx.referralCommission.findMany({ where: { submissionId: s.id, status: 'credited' } });
     for (const c of comms) {

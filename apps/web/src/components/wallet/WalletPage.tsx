@@ -12,10 +12,12 @@ import { AddPayoutMethodDialog } from './PayoutMethodDialogs';
 
 const HEADER = { title: 'Wallet', subtitle: 'Your balance, payouts and every transaction in one place.' };
 
+const IN_FLIGHT_STATUS: Record<string, string> = { requested: 'waiting to be sent', processing: 'being sent' };
+
 function inFlightCaption(w: WalletSummary) {
   if (!w.in_flight_count || !w.in_flight_latest) return 'No withdrawals in progress';
   if (w.in_flight_count > 1) return `${w.in_flight_count} requests · oldest ${formatDate(w.in_flight_latest.oldest_requested_at)}`;
-  return `Requested ${formatDate(w.in_flight_latest.requested_at)} · ${w.in_flight_latest.status}`;
+  return `Requested ${formatDate(w.in_flight_latest.requested_at)} · ${IN_FLIGHT_STATUS[w.in_flight_latest.status] ?? w.in_flight_latest.status}`;
 }
 
 export function WalletPage() {
@@ -58,7 +60,7 @@ export function WalletPage() {
             label="Withdrawals on the way"
             value={formatMoney(w.in_flight_usd)}
             countUp
-            badge={w.in_flight_count ? { label: `${w.in_flight_count} sent`, tone: 'info' } : undefined}
+            badge={w.in_flight_count ? { label: `${w.in_flight_count} in progress`, tone: 'info' } : undefined}
             meta={inFlightCaption(w)}
           />
         </div>

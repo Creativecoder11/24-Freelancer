@@ -5,6 +5,7 @@ import { formatRelative, formatReward, type JobCard as JobCardT, type JobDetailP
 import { apiGet, apiTry, ApiRequestError, LIVE } from '@/lib/api/server';
 import { toCardData } from '@/lib/jobs';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
+import { BreadcrumbJsonLd } from '@/components/seo/JsonLd';
 
 type Props = { params: Promise<{ publicId: string }> };
 
@@ -23,6 +24,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: job.title,
     description: `${formatReward(job.reward_usd)} per approved task · about ${job.display_minutes} min · ${job.slots_left} of ${job.slots_total} slots left.`,
+    alternates: { canonical: `/jobs/${job.public_id}` },
+    openGraph: { title: `${job.title} — ${formatReward(job.reward_usd)} per task`, url: `/jobs/${job.public_id}` },
   };
 }
 
@@ -41,6 +44,7 @@ export default async function JobDetailPage({ params }: Props) {
 
   return (
     <MarketingMotion>
+      <BreadcrumbJsonLd items={[{ name: 'Home', path: '/' }, { name: 'Browse jobs', path: '/jobs' }, { name: job.title, path: `/jobs/${job.public_id}` }]} />
       <div className="mx-auto max-w-container px-5 pb-24 pt-8 tablet:px-8 desktop:px-0">
         <Breadcrumbs
           items={[

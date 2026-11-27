@@ -115,7 +115,7 @@ export function TasksPage() {
               type="progress"
               label="Approval rate · last 30 days"
               value={s.approval_rate_percent !== null ? `${s.approval_rate_percent}%` : '—'}
-              meta={s.approval_rate_percent !== null ? `${s.approved_30d} approved · ${s.rejected_30d} rejected` : 'Shown after 5 decisions'}
+              meta={s.approval_rate_percent !== null ? `${s.approved_30d} approved · ${s.rejected_30d} rejected` : `Shown after ${s.decisions_needed} more ${s.decisions_needed === 1 ? 'decision' : 'decisions'}`}
               progress={{ value: s.approval_rate_percent ?? 0, max: 100, valueText: s.approval_rate_percent !== null ? `${s.approval_rate_percent}% approved` : 'Not enough decisions yet' }}
               countUp
             />

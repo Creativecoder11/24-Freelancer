@@ -338,25 +338,24 @@ export class AdminLedgerService {
 
   async referrals(ctx: AdminCtx, q: Q) {
     if (!ctx.has('referrals.read')) {
-      const [byStatus, comm, deps] = await Promise.all([
+      // Commission comes only from a friend's first approved task, so "% of deposits" no longer means anything.
+      const [byStatus, comm] = await Promise.all([
         this.db.referral.groupBy({ by: ['status'], _count: { _all: true } }),
         this.db.referralCommission.groupBy({ by: ['status'], _sum: { amount: true } }),
-        this.db.deposit.aggregate({ where: { status: { in: ['completed', 'refunded'] } }, _sum: { creditedAmountUsd: true } }),
       ]);
-      const credited = dec(comm.find((c) => c.status === 'credited')?._sum.amount);
-      const base = dec(deps._sum.creditedAmountUsd);
-      return { aggregate: true, by_status: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])), commissions: Object.fromEntries(comm.map((c) => [c.status, m6(c._sum.amount)])), percent_of_deposits: base.gt(0) ? credited.div(base).mul(100).toFixed(2) : '0.00' };
+      return { aggregate: true, by_status: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])), commissions: Object.fromEntries(comm.map((c) => [c.status, m6(c._sum.amount)])) };
     }
     const p = paging(q);
     const where: Prisma.ReferralWhereInput = {};
     if (q.status) where.status = q.status as 'active';
-    if (bool(q.flagged)) where.riskScore = { gte: 30 };
+    // Flagged = high risk and not already marked ineligible (same filter as the nav badge).
+    if (bool(q.flagged)) Object.assign(where, { riskScore: { gte: 30 }, status: { not: 'ineligible' } });
     if (q.referrer) where.referrerUser = { publicId: q.referrer };
     const orderBy: Prisma.ReferralOrderByWithRelationInput = bool(q.flagged) ? { riskScore: 'desc' } : { createdAt: 'desc' };
     const [rows, total, flagged] = await Promise.all([
       this.db.referral.findMany({ where, orderBy, skip: p.skip, take: p.take, include: { referrerUser: { select: { publicId: true } }, referredUser: { select: { publicId: true } }, referralCommissions: { select: { amount: true, status: true } } } }),
       this.db.referral.count({ where }),
-      this.db.referral.count({ where: { riskScore: { gte: 30 } } }),
+      this.db.referral.count({ where: { riskScore: { gte: 30 }, status: { not: 'ineligible' } } }),
     ]);
     return paged(
       rows.map((r) => ({ id: r.id, referrer_public_id: r.referrerUser.publicId, referred_public_id: r.referredUser.publicId, code_used: r.codeUsed, status: r.status, ineligible_reason: r.ineligibleReason, risk_flags: r.riskFlags, risk_score: r.riskScore ?? 0, commission_total_usd: m2(r.referralCommissions.filter((c) => c.status === 'credited').reduce((a, c) => a.plus(dec(c.amount)), new Decimal(0))), created_at: iso(r.createdAt) })),

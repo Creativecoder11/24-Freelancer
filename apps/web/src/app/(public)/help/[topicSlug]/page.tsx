@@ -18,7 +18,7 @@ async function getTopic(slug: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const topic = await getTopic((await params).topicSlug);
-  return topic ? { title: `${topic.title} · Help center`, description: topic.description } : { title: 'Help topic not found' };
+  return topic ? { title: `${topic.title} · Help center`, description: topic.description, alternates: { canonical: `/help/${topic.slug}` } } : { title: 'Help topic not found' };
 }
 
 /** SCR-PUB-ND1 topic list view (`/help/[topicSlug]`). */

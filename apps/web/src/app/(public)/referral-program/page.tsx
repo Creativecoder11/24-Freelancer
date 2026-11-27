@@ -18,6 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const pct = +((await getRate()) * 100).toFixed(2);
   return {
     title: 'Referral program',
+    alternates: { canonical: '/referral-program' },
     description: `Invite friends to 24 Freelancing and earn ${pct}% of the reward for each friend’s first approved task — a one-time bonus added to your balance automatically.`,
   };
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import Decimal from 'decimal.js';
 import { RedisService } from '../../common/redis.service';
 import { EmployerCore, dec, expectedReserve, usd2 } from '../employer/employer-common';
+import { refreshRatesFor } from '../review/approval-rate';
 
 /**
  * System jobs that close the job and submission lifecycles (FR-SYS-003, FR-SYS-004; Doc 04 §12):
@@ -135,6 +136,7 @@ export class JobLifecycleService implements OnModuleInit, OnModuleDestroy {
               AND dispute_open = false FOR UPDATE SKIP LOCKED`;
           if (!rows.length) return null;
           const sub = await tx.submission.update({ where: { id }, data: { status: 'rejected' }, include: { job: true } });
+          await refreshRatesFor(tx, sub);
           await tx.job.update({ where: { id: sub.jobId }, data: { countNeedsFix: { decrement: 1 }, countRejected: { increment: 1 } } });
           await tx.submissionEvent.create({
             data: { submissionId: sub.id, reservationId: sub.reservationId, eventType: 'fix_window_expired', actorType: 'system', data: { deadline: sub.resubmitDeadline?.toISOString() ?? null } },

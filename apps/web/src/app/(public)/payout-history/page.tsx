@@ -10,6 +10,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: 'Recent payouts',
   description: 'The latest paid withdrawals on 24 Freelancing. Names are partly hidden for privacy.',
+  alternates: { canonical: '/payout-history' },
 };
 
 /** API rows carry `paid_at`; the shared type also allows a preformatted `paid_at_relative`. */

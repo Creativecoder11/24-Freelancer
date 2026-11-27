@@ -8,6 +8,7 @@ import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { Markdown } from '@/components/public/Markdown';
 import { StillNeedHelp } from '@/components/public/help/HelpWidgets';
 import { WasThisHelpful } from '@/components/public/help/WasThisHelpful';
+import { BreadcrumbJsonLd } from '@/components/seo/JsonLd';
 
 export const revalidate = 300;
 
@@ -24,7 +25,9 @@ async function getArticle(slug: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const a = await getArticle((await params).articleSlug).catch(() => null);
-  return a ? { title: `${a.title} · Help center`, description: a.body_md.replace(/[#*_`>\[\]()]/g, '').slice(0, 155) } : { title: 'Help article' };
+  return a
+    ? { title: `${a.title} · Help center`, description: a.body_md.replace(/[#*_`>\[\]()]/g, '').slice(0, 155), alternates: { canonical: `/help/${a.topic.slug}/${a.slug}` }, openGraph: { type: 'article' } }
+    : { title: 'Help article' };
 }
 
 /** SCR-PUB-ND1 Help article (`/help/[topicSlug]/[articleSlug]`). */
@@ -41,6 +44,13 @@ export default async function HelpArticlePage({ params }: Props) {
 
   return (
     <MarketingMotion>
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Help center', path: '/help' },
+          { name: article.topic.title, path: `/help/${article.topic.slug}` },
+          { name: article.title, path: `/help/${article.topic.slug}/${article.slug}` },
+        ]}
+      />
       <div className="mx-auto mb-24 max-w-container px-5 pt-8 tablet:px-8 desktop:px-0 desktop:pt-10">
         <Breadcrumbs
           items={[

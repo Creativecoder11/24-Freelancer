@@ -215,7 +215,7 @@ function Deposits() {
             <Search value={q} onValueChange={setQ} label="Search deposits" placeholder="DP-, employer ID or provider ID" size="M" />
           </div>
           <FilterSelect label="Method" value={u.get('method')} onChange={(v) => u.set({ method: v })} options={[{ value: '', label: 'Any method' }, { value: 'mobile_wallet', label: 'Mobile wallet' }, { value: 'card', label: 'Card' }, { value: 'crypto', label: 'Crypto' }]} />
-          <FilterSelect label="Range" value={u.get('range')} onChange={(v) => { const days = { '': 0, today: 0, '7': 7, '30': 30, '90': 90 }[v] ?? 0; const from = v ? new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10) : null; u.set({ range: v, from }); }} options={[{ value: '', label: 'Any time' }, { value: 'today', label: 'Today' }, { value: '7', label: 'Last 7 days' }, { value: '30', label: 'Last 30 days' }, { value: '90', label: 'Last 90 days' }]} />
+          <FilterSelect label="Range" value={u.get('range')} onChange={(v) => { const days = { '': 0, today: 0, '7': 7, '30': 30, '90': 90 }[v] ?? 0; const from = v ? new Date(Date.now() + 6 * 3_600_000 - days * 86_400_000).toISOString().slice(0, 10) : null; /* Dhaka (UTC+6) calendar date; the API reads it as Dhaka midnight */ u.set({ range: v, from }); }} options={[{ value: '', label: 'Any time' }, { value: 'today', label: 'Today' }, { value: '7', label: 'Last 7 days' }, { value: '30', label: 'Last 30 days' }, { value: '90', label: 'Last 90 days' }]} />
         </Toolbar>
         <Table<Row>
           caption="Deposits"

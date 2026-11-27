@@ -8,6 +8,7 @@ import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ReferralCreditService } from '../employer/referral-credit';
 import { EmployerCore, dec, shortTitle, unitCost, usd3, usd6 } from '../employer/employer-common';
+import { refreshApprovalRates, refreshRatesFor } from './approval-rate';
 
 export type DecisionSource = 'employer' | 'auto' | 'admin';
 
@@ -139,7 +140,8 @@ export class ApprovalService {
         { reservationId: sub.reservationId, submissionId: sub.id, eventType: 'paid_to_balance', actorType, actorUserId: source === 'employer' ? actor.userId : null, data: { amount: usd6(sub.rewardUsd) } },
       ],
     });
-    await tx.workerProfile.updateMany({ where: { userId: sub.workerUserId }, data: { approvedTotal: { increment: 1 }, approved30d: { increment: 1 } } });
+    await tx.workerProfile.updateMany({ where: { userId: sub.workerUserId }, data: { approvedTotal: { increment: 1 } } });
+    await refreshRatesFor(tx, sub);
 
     // 4. Completion in the same transaction (Doc 04 §5.13).
     const fresh = await tx.job.findUniqueOrThrow({ where: { id: job.id } });
@@ -191,6 +193,12 @@ export class ApprovalService {
    * First-task-only rule: only each friend's first approved task, and only while their referral
    * has no task commission yet — so later tasks are never re-picked every run.
    */
+  /** Daily roll-off: decisions older than the approval-rate window drop out of every rate (A-20). */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { name: 'approval-rates.rolloff', timeZone: 'Asia/Dhaka' })
+  async approvalRateRolloff() {
+    await this.db.$transaction((tx) => refreshApprovalRates(tx, { workerUserId: null, employerUserId: null }), { timeout: 120_000 });
+  }
+
   @Cron(CronExpression.EVERY_10_MINUTES, { name: 'referrals.task-sweep' })
   async referralSweep() {
     const since = new Date(Date.now() - 7 * 86_400_000);
@@ -300,7 +308,7 @@ export class ApprovalService {
         data: { reservationId: sub.reservationId, submissionId: sub.id, eventType: fix ? 'needs_fix' : 'rejected', actorType: 'user', actorUserId: employerId, data: { reason_code: dto.reason_code } },
       });
       if (!fix) {
-        await tx.workerProfile.updateMany({ where: { userId: sub.workerUserId }, data: { rejected30d: { increment: 1 } } });
+        await refreshRatesFor(tx, sub);
         // BR-009: a final rejection frees the slot. On a paused or finished job the budget goes back now.
         if (job.status !== 'running') {
           await this.core.moveReserve(tx, job, 'release', unitCost(job), `submission:${sub.publicRef}:release`, { title: job.title, reason: 'unused slot returned' });

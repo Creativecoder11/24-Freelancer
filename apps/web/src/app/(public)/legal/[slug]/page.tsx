@@ -35,7 +35,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   if (!(slug in DOCS)) return {};
   const title = DOCS[slug as Slug];
-  return { title, description: `${title} for 24 Freelancing — the rules that apply to workers, employers and payments on the platform.` };
+  return { title, description: `${title} for 24 Freelancing — the rules that apply to workers, employers and payments on the platform.`, alternates: { canonical: `/legal/${slug}` } };
 }
 
 /** SCR-PUB-ND2..ND5 Legal pages (G-15, D-17). Shows `pub.legal.pending` until the client supplies text. */

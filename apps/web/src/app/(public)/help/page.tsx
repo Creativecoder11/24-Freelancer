@@ -11,6 +11,7 @@ import { PayoutStatusNote, StillNeedHelp } from '@/components/public/help/HelpWi
 export const metadata: Metadata = {
   title: 'Help center & FAQ',
   description: 'Answers about tasks, proof, payouts, withdrawals, employers and the referral program — plus live support when you need a person.',
+  alternates: { canonical: '/help' },
 };
 
 const POPULAR = ['Minimum withdrawal', 'Rejected task', 'Verify account', 'Post a job'];

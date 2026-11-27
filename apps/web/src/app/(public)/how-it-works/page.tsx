@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: 'How it works',
   description:
     'Simple tasks, clear rules, tracked payouts. See how workers earn in five steps and how employers get many small tasks done at once.',
+  alternates: { canonical: '/how-it-works' },
 };
 
 const EMPLOYER_STEPS = [

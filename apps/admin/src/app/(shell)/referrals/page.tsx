@@ -11,7 +11,7 @@ import { usd } from '@/lib/fmt';
 
 interface Row { id: string; referrer_public_id: string; referred_public_id: string; code_used: string; status: string; ineligible_reason: string | null; risk_flags: string[]; risk_score: number; commission_total_usd: string }
 interface Detail { id: string; status: string; referrer_public_id: string; referred_public_id: string; referred_name_masked: string; risk_score: number; risk_flags: string[]; signals: Record<string, boolean>; hard_block: string | null; thresholds: { block: number; flag: number }; commissions: { id: string; source_type: string; submission_ref: string | null; deposit_ref: string | null; base_amount_exact: string; rate: string; amount_exact: string; status: string; credited_at: string | null }[] }
-interface Agg { aggregate: true; by_status: Record<string, number>; commissions: Record<string, string>; percent_of_deposits: string }
+interface Agg { aggregate: true; by_status: Record<string, number>; commissions: Record<string, string> }
 
 /** SCR-ADM-14 Referrals (Doc 09 §6, §15). Analysts see aggregates only. */
 function Referrals() {
@@ -32,7 +32,6 @@ function Referrals() {
         <div className="grid gap-4 tablet:grid-cols-3">
           {Object.entries(a.by_status).map(([k, v]) => <Kpi key={k} label={`Referrals · ${k.replace('_', ' ')}`} value={v} sub=" " />)}
           {Object.entries(a.commissions).map(([k, v]) => <Kpi key={k} label={`Commissions ${k}`} value={Number(v)} money sub=" " />)}
-          <Kpi label="Commission as % of deposits" value={Number(a.percent_of_deposits)} display={`${a.percent_of_deposits}%`} sub=" " />
         </div>
       </Gate>
     );

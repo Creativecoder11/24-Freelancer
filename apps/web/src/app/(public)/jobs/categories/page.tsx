@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Job categories',
   description: 'Find microtasks by category — data entry, surveys, testing, writing and more — with live open-job counts and average rewards.',
+  alternates: { canonical: '/jobs/categories' },
 };
 
 /** SCR-PUB-04 directory only (Figma 21:1053). Typing a search switches the URL to /jobs/search. */

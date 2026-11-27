@@ -18,7 +18,7 @@ export function Overview() {
     title: d?.greeting ?? 'Overview',
     subtitle: d
       ? d.subtitle_counts.waiting > 0
-        ? `${d.subtitle_counts.waiting} ${d.subtitle_counts.waiting === 1 ? 'submission is' : 'submissions are'} waiting for your review across ${d.subtitle_counts.running_jobs} running ${d.subtitle_counts.running_jobs === 1 ? 'job' : 'jobs'}.`
+        ? `${d.subtitle_counts.waiting} ${d.subtitle_counts.waiting === 1 ? 'submission is' : 'submissions are'} waiting for your review across ${d.stats.waiting_jobs} ${d.stats.waiting_jobs === 1 ? 'job' : 'jobs'}.`
         : d.subtitle_counts.running_jobs > 0
           ? `Nothing is waiting for review. ${d.subtitle_counts.running_jobs} running ${d.subtitle_counts.running_jobs === 1 ? 'job' : 'jobs'}.`
           : 'Post a job to get work done. You see the full cost upfront.'

@@ -89,7 +89,8 @@ export class AdminWithdrawalsService {
       this.db.withdrawal.count({ where: { status: 'requested' } }),
       this.db.withdrawal.count({ where: { status: 'processing' } }),
       this.db.withdrawal.count({ where: { status: 'requested', OR: [{ holdUntil: { gt: now } }, unacked] } }),
-      this.db.adminPendingAction.count({ where: { objectType: OBJ, status: 'pending' } }),
+      // "Needs my approval" lists only actions another admin proposed, so count the same way.
+      this.db.adminPendingAction.count({ where: { objectType: OBJ, status: 'pending', createdByAdminId: { not: ctx.id } } }),
     ]);
     const oldest = await this.db.withdrawal.findFirst({ where: { status: 'requested' }, orderBy: { requestedAt: 'asc' }, select: { requestedAt: true } });
     const pend = await this.dual.openMany(OBJ, rows.map((r) => r.id));

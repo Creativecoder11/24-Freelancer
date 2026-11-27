@@ -245,10 +245,12 @@ export class AdminOpsService {
       c.dispute.count({ where: { status: { in: ['open', 'under_review'] } } }),
       c.dispute.count({ where: { status: { in: ['open', 'under_review'] }, slaDueAt: { lt: now } } }),
       c.jobReport.count({ where: { status: 'open' } }),
-      c.job.count({ where: { moderationFlaggedAt: { not: null }, status: 'running' } }),
+      // Same filter as the Jobs → Flagged tab count.
+      c.job.count({ where: { deletedAt: null, moderationFlaggedAt: { not: null } } }),
       c.submission.count({ where: { status: 'in_review', escalatedAt: { not: null } } }),
       c.contactMessage.count({ where: { status: 'new', ...(financeOnly ? { topic: 'payments_withdrawals' } : {}) } }),
-      c.ledgerAdjustmentRequest.count({ where: { status: 'pending_approval', expiresAt: { gt: now } } }),
+      // "Adjustments to approve" opens Needs my approval: another admin's live proposals only.
+      c.ledgerAdjustmentRequest.count({ where: { status: 'pending_approval', expiresAt: { gt: now }, createdByAdminId: { not: ctx.id } } }),
     ]);
     // Deposits badge: submitted deposits waiting for an admin to check (manual bKash/Nagad/crypto refs) + approvals waiting on a second admin.
     const [depPending, depApprovals, wdApprovals, appeals, reconOpen, referralsFlagged] = await Promise.all([
@@ -286,6 +288,9 @@ export class AdminOpsService {
     const hrs = paid7.map((w) => (w.paidAt!.getTime() - w.requestedAt.getTime()) / 3_600_000).sort((a, b) => a - b);
     const median = hrs.length ? (hrs.length % 2 ? hrs[(hrs.length - 1) / 2]! : (hrs[hrs.length / 2 - 1]! + hrs[hrs.length / 2]!) / 2) : null;
     const fxAge = fx ? Math.floor((now.getTime() - fx.effectiveFrom.getTime()) / 3_600_000) : null;
+    // Same rule as FxService.current: only auto-fetched rates expire. A manual rate never blocks withdrawals.
+    const autoFx = (await c.platformSetting.findUnique({ where: { key: 'fx_auto_fetch_enabled' } }))?.value === true;
+    const fxCanExpire = autoFx && fx?.source !== 'manual';
     const service = {
       kyc_within_sla_7d_pct: pct(kycDec.filter((k) => k.reviewedAt! <= k.reviewDueAt).length, kycDec.length),
       disputes_within_sla_7d_pct: pct(disRes.filter((d) => d.resolvedAt! <= d.slaDueAt).length, disRes.length),
@@ -293,6 +298,7 @@ export class AdminOpsService {
       jobs_running: running,
       in_review_total: inReview,
       fx_age_hours: ctx.hasAny('fx.write', 'payout_configs.read') ? fxAge : undefined,
+      fx_can_expire: ctx.hasAny('fx.write', 'payout_configs.read') ? fxCanExpire : undefined,
     };
 
     // 14-day trend (Dhaka days): approvals, plus money when allowed.
@@ -308,9 +314,6 @@ export class AdminOpsService {
     const alerts: { severity: string; code: string; message: string; link: string }[] = [];
     const finance = ctx.isSuper || ctx.roles.includes('finance_admin');
     const ops = ctx.isSuper || ctx.roles.includes('ops_admin');
-    // Same rule as FxService.current: only auto-fetched rates expire. A manual rate never blocks withdrawals.
-    const autoFx = (await c.platformSetting.findUnique({ where: { key: 'fx_auto_fetch_enabled' } }))?.value === true;
-    const fxCanExpire = autoFx && fx?.source !== 'manual';
     if (finance && fxCanExpire && fxAge !== null && fxAge >= 36) alerts.push({ severity: 'critical', code: 'fx_stale', message: 'The BDT rate is out of date, so BDT withdrawals are blocked. Add a rate.', link: '/settings?tab=fx' });
     else if (finance && fxCanExpire && fxAge !== null && fxAge >= 24) alerts.push({ severity: 'high', code: 'fx_stale_soon', message: `The BDT rate is ${fxAge} hours old. BDT withdrawals stop at 36 hours.`, link: '/settings?tab=fx' });
     if (finance) {

@@ -1,9 +1,13 @@
+import type { Metadata } from 'next';
 import type { Faq, PublicConfig } from '@24f/shared';
 import { apiTry } from '@/lib/api/server';
 import { MarketingMotion } from '@/components/marketing/MarketingMotion';
 import { Hero } from '@/components/marketing/home/Hero';
 import { StepsToggle } from '@/components/marketing/home/StepsToggle';
 import { Audience, FaqSection, FinalCta, Promises, ReferralBand, SectionHeader, Trust } from '@/components/marketing/home/Sections';
+import { FaqJsonLd } from '@/components/seo/JsonLd';
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 /** SCR-PUB-01 Homepage (Figma 18:477). */
 export default async function HomePage() {
@@ -15,6 +19,7 @@ export default async function HomePage() {
 
   return (
     <MarketingMotion>
+      <FaqJsonLd faqs={faqs?.data ?? []} />
       <Hero />
       <div className="mt-12 desktop:mt-12">
         <Promises />

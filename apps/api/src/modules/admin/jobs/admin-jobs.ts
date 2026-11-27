@@ -6,6 +6,7 @@ import { PrismaService } from '../../../common/prisma.service';
 import { ApiError } from '../../../common/api-error';
 import { EmployerCore, expectedReserve, unitCost } from '../../employer/employer-common';
 import { ApprovalService } from '../../review/approval.service';
+import { refreshRatesFor } from '../../review/approval-rate';
 import { AdminGuard, AdminAuditInterceptor } from '../core/admin.guard';
 import { Admin, Perms, type AdminCtx } from '../core/admin-context';
 import { AuditService } from '../core/audit.service';
@@ -217,6 +218,7 @@ export class AdminJobsService {
         for (const s of inReview) {
           if (rejectRefs.includes(s.publicRef)) {
             await tx.submission.update({ where: { id: s.id }, data: { status: 'rejected', decidedAt: now, finalAt: now, decisionSource: 'admin', decidedByAdminId: ctx.id, rejectionReasonCode: rejectCode, rejectionReasonText: reason.slice(0, 300), fixAllowed: false } });
+            await refreshRatesFor(tx, s);
             await tx.submissionAttempt.updateMany({ where: { submissionId: s.id, attemptNo: s.currentAttemptNo }, data: { decision: 'rejected', decidedAt: now, rejectionReasonCode: rejectCode, rejectionReasonText: reason.slice(0, 300) } });
             await tx.job.update({ where: { id: j.id }, data: { countInReview: { decrement: 1 }, countRejected: { increment: 1 } } });
             await tx.submissionEvent.create({ data: { reservationId: s.reservationId, submissionId: s.id, eventType: 'rejected', actorType: 'admin', actorAdminId: ctx.id, data: { reason_code: rejectCode, source: 'admin_close' } } });

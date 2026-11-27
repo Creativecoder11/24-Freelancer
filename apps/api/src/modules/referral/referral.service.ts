@@ -104,10 +104,18 @@ export class ReferralService {
     const sum = (src: string | null, st: string) => comm.filter((c) => (src ? c.sourceType === src : true) && c.status === st).reduce((s, c) => s.plus(D(c._sum.amount)), new Decimal(0));
     const fromTasks = sum('task', 'credited');
     const fromDeposits = sum('deposit', 'credited');
-    const friendIds = refs.filter((r) => r.status !== 'ineligible').map((r) => r.referredUserId);
-    const pendingBase = friendIds.length
-      ? await this.prisma.db.submission.aggregate({ where: { workerUserId: { in: friendIds }, status: 'in_review' }, _sum: { rewardUsd: true } })
-      : { _sum: { rewardUsd: null } };
+    // First-task-only rule: only friends who haven't earned you the bonus yet can still add to it, and
+    // only once — so count each such friend's earliest task in review, plus commissions still pending.
+    const waitingIds = refs.filter((r) => r.status === 'not_started').map((r) => r.referredUserId);
+    const firstInReview = waitingIds.length
+      ? await this.prisma.db.submission.findMany({
+          where: { workerUserId: { in: waitingIds }, status: 'in_review' },
+          orderBy: [{ firstSubmittedAt: 'asc' }, { id: 'asc' }],
+          distinct: ['workerUserId'],
+          select: { rewardUsd: true },
+        })
+      : [];
+    const pendingUsd = firstInReview.reduce((a, r) => a.plus(D(r.rewardUsd)), new Decimal(0)).times(task).plus(sum(null, 'pending'));
     const rows = this.sortFriends(await this.friendRows(userId, refs));
     const earners = rows.filter((r) => r.status === 'active').sort((a, b) => D(b.earned_usd).cmp(D(a.earned_usd)));
     const top = [...earners.slice(0, 3), ...rows.filter((r) => r.status === 'not_started')].slice(0, 4);
@@ -131,7 +139,7 @@ export class ReferralService {
       },
       commission_status: {
         added_to_balance_usd: m2(fromTasks.plus(fromDeposits)),
-        pending_usd: m2(D(pendingBase._sum.rewardUsd).times(task)),
+        pending_usd: m2(pendingUsd),
         not_eligible_usd: m2(sum(null, 'ineligible')),
       },
       rate_label: `${pct}%`,

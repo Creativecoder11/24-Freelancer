@@ -13,6 +13,7 @@ import { parseFilters, toQuery } from '@/components/jobs/query';
 export const metadata: Metadata = {
   title: 'Browse all jobs',
   description: 'Open microjobs on 24 Freelancing. Every job shows its reward, time and required proof up front.',
+  alternates: { canonical: '/jobs' },
 };
 
 /** Rows guests see (blurred) behind the sign-in prompt. */

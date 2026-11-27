@@ -259,14 +259,17 @@ export class EmployerWalletService {
         const style: StatementRow['amount_style'] = g.fromBalance.isZero() ? 'neutral' : g.amount.gt(0) ? 'credit' : 'debit';
         const abs = g.amount.abs();
         const sign = g.amount.lt(0) ? '−' : g.amount.gt(0) ? '+' : '';
+        // Rewards and per-worker fees step by $0.001: show 3 decimals when a cent can't hold the
+        // amount (otherwise $0.005 shows as "−$0.00"). The running balance stays at 2.
+        const dp = abs.mul(100).isInteger() ? 2 : 3;
         return {
           ref: r.public_ref,
           occurred_at: r.occurred_at.toISOString(),
           type: r.type === 'task_reward' ? 'job_spend' : r.type,
           type_label: TYPE_LABEL[r.type] ?? r.type,
           description: this.describe(r, g.rows.length),
-          amount_usd: g.amount.toDecimalPlaces(2, Decimal.ROUND_DOWN).toFixed(2),
-          amount_label: `${sign}$${abs.toDecimalPlaces(2, Decimal.ROUND_DOWN).toFixed(2)}`,
+          amount_usd: g.amount.toDecimalPlaces(dp, Decimal.ROUND_DOWN).toFixed(dp),
+          amount_label: `${sign}$${abs.toDecimalPlaces(dp, Decimal.ROUND_DOWN).toFixed(dp)}`,
           amount_style: style,
           balance_usd: usd2(g.balance),
           balance_exact: g.balance.toFixed(6),
