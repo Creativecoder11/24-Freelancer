@@ -6,7 +6,7 @@ import { RedisService } from '../../../common/redis.service';
 import { ApiError } from '../../../common/api-error';
 import { SettingsService } from '../../settings/settings.service';
 import { AdminGuard, AdminAuditInterceptor } from '../core/admin.guard';
-import { Admin, Perms, type AdminCtx } from '../core/admin-context';
+import { Admin, Perms, Reauth, type AdminCtx } from '../core/admin-context';
 import { AdminSessionService } from '../core/admin-session.service';
 import { AuditService } from '../core/audit.service';
 import { adminEnv } from '../core/admin-env';
@@ -203,6 +203,9 @@ export class AdminSettingsService {
     if (Object.keys(fields).length) throw new ApiError('VALIDATION_FAILED', undefined, fields);
 
     const changed = [...next].filter(([k, v]) => cur.get(k) !== v.value);
+    // The receiving account decides where every employer's money goes: super admins only.
+    if (!ctx.isSuper && changed.some(([k]) => k === d.accountKey))
+      throw new ApiError('ADMIN_FORBIDDEN', 'Only a super admin can change the account that receives deposits.');
     if (changed.length) {
       await this.db.$transaction(async (tx) => {
         for (const [key, v] of changed) {
@@ -379,6 +382,7 @@ export class AdminSettingsController {
   }
 
   @Patch('deposit-methods/:channel')
+  @Reauth()
   @Perms('settings.write')
   updateDepositMethod(@Admin() ctx: AdminCtx, @Param('channel') c: string, @Body() b: Record<string, unknown>) {
     return this.svc.updateDepositMethod(ctx, c, b ?? {});

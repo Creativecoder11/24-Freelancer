@@ -1,9 +1,12 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { z } from 'zod';
 import { queryPage, queryPerPage } from '@24f/shared';
 import { ZodPipe } from '../../common/zod.pipe';
 import { AllowStatus, CurrentUser, JwtAuthGuard } from '../auth/auth.module';
 import { requireIdemKey } from '../employer/employer-common';
+import { PrismaService } from '../../common/prisma.service';
+import { withIdempotency } from '../withdrawals/idempotency';
 import { JobsService } from './jobs.service';
 import { jobWriteSchema, type JobWrite } from './job-rules';
 
@@ -25,7 +28,10 @@ const marketQuery = z.object({ category: z.string().optional(), time_per_task: z
 @Controller('employer')
 @UseGuards(JwtAuthGuard)
 export class JobsController {
-  constructor(private readonly jobs: JobsService) {}
+  constructor(
+    private readonly jobs: JobsService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get('jobs')
   list(@CurrentUser('id') uid: string, @Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>) {
@@ -114,8 +120,14 @@ export class JobsController {
     @Param('publicId') id: string,
     @Headers('idempotency-key') key: string | undefined,
     @Body(new ZodPipe(slotsBody)) body: z.infer<typeof slotsBody>,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.jobs.addSlots(uid, id, body, requireIdemKey(key));
+    const k = requireIdemKey(key);
+    // A retry with the same key gets the stored response instead of adding slots again.
+    return withIdempotency(this.prisma, { userId: uid, key: k, method: 'POST', path: `/employer/jobs/${id}/slots`, body, res }, async () => ({
+      status: 200,
+      body: await this.jobs.addSlots(uid, id, body, k),
+    }));
   }
 
   /** Top ($5), Pin ($10) or Combo ($8) from the available balance (CR-2026-11b). */

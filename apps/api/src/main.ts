@@ -23,6 +23,11 @@ async function bootstrap() {
   const env = getEnv(); // loads .env and validates (Doc 11 §4.3)
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const origins = (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:3001,http://localhost:3005').split(',').map((o) => o.trim());
+  // Traffic arrives via nginx → Next.js rewrite → API, so without this every request has the
+  // proxy's IP and all per-IP limits (throttler, OTP, login lockout, admin allowlist) are shared
+  // by every user. 'loopback' trusts X-Forwarded-For only from same-host proxies, so a client
+  // hitting the API directly can't spoof it. TRUST_PROXY=<n> sets an exact hop count instead.
+  app.getHttpAdapter().getInstance().set('trust proxy', env.TRUST_PROXY > 0 ? env.TRUST_PROXY : 'loopback');
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: origins, credentials: true });

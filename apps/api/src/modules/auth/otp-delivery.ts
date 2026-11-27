@@ -56,8 +56,15 @@ export class EmailOtpDelivery extends OtpDeliveryAdapter {
 
   async send(m: OtpMessage) {
     const text = otpText(m);
-    this.log.log(`[Email OTP] → ${m.destination} (${m.purpose}): ${m.code}`);
-    await this.redis.client.set(`otp:last:${m.destination}`, m.code, 'EX', m.expiresMinutes * 60);
+    // Anyone who can read logs or Redis could otherwise take over accounts with these codes,
+    // so the code itself is only kept on local/dev/test machines.
+    const devLike = process.env.NODE_ENV !== 'production' && ['local', 'dev', 'test'].includes(process.env.APP_ENV ?? 'local');
+    if (devLike) {
+      this.log.log(`[Email OTP] → ${m.destination} (${m.purpose}): ${m.code}`);
+      await this.redis.client.set(`otp:last:${m.destination}`, m.code, 'EX', m.expiresMinutes * 60);
+    } else {
+      this.log.log(`[Email OTP] sent (${m.purpose})`);
+    }
 
     const resendKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.EMAIL_FROM ?? '24 Freelancing <noreply@24freelancing.com>';

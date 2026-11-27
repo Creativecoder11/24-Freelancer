@@ -244,6 +244,11 @@ export class MeService {
         throw new ApiError('FEATURE_DISABLED', 'Add a payout method later in Settings.');
       case 'business': {
         await this.profiles.ensureEmployerProfile(id);
+        const prof = await this.prisma.db.employerProfile.findUniqueOrThrow({ where: { userId: id }, select: { businessName: true, verificationStatus: true } });
+        // A verified name can't be swapped here (it would keep the "verified" badge); the profile
+        // editor re-queues verification for that.
+        if (prof.verificationStatus === 'verified' && prof.businessName !== dto.business_name)
+          throw new ApiError('INVALID_STATE', 'Your business is verified. Change its name in Settings → Business profile.');
         await this.prisma.db.employerProfile.update({
           where: { userId: id },
           data: {
@@ -315,11 +320,15 @@ export class MeService {
 
   // ----- security -----
 
-  async changePassword(id: string, dto: { current_password: string; new_password: string }) {
+  async changePassword(user: AuthUser, dto: { current_password: string; new_password: string }) {
+    const id = user.id;
     await this.passwords.verifyForSensitiveAction(id, dto.current_password, 'password_change', 'current_password');
     this.passwords.assertPolicy(dto.new_password, 'new_password');
     await this.passwords.assertNotReused(id, dto.new_password, 'new_password');
     const at = await this.passwords.setPassword(id, await this.passwords.hash(dto.new_password));
+    // A stolen session must not survive a password change: end every other session (this one stays).
+    const current = await this.sessions.get(user.sessionId);
+    await this.sessions.revokeAll(id, 'password_change', current?.familyId);
     return { password_changed_at: at.toISOString() };
   }
 

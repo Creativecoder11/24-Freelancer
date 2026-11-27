@@ -45,7 +45,10 @@ export function canonicalJson(v: unknown): string {
 }
 
 export function mockSecret() {
-  return process.env.MOCK_PAYMENTS_SECRET ?? 'dev-only-mock-payments-secret-change-me-0123456789';
+  if (process.env.MOCK_PAYMENTS_SECRET) return process.env.MOCK_PAYMENTS_SECRET;
+  // The fallback is public (it's in the repo), so it must never sign anything in production.
+  if (process.env.NODE_ENV === 'production') throw new Error('MOCK_PAYMENTS_SECRET is not set');
+  return 'dev-only-mock-payments-secret-change-me-0123456789';
 }
 
 export function mockSign(canonicalBody: string) {

@@ -15,6 +15,7 @@ import { AdminNotifier } from '../core/notify';
 import { DualControlService, pendingResponse } from '../core/dual-control';
 import { bool, dateRange, dec, idemKey, iso, m2, m6, needMoney, needReason, needText, paged, paging, pd, type Q } from '../core/helpers';
 import { CHANNELS, channelLabel, isManualChannel } from '../../deposits/manual-channels';
+import { lockTrxId } from '../../deposits/deposits.service';
 
 const OBJ = 'deposit';
 const CLEARING: Record<string, string> = { bkash: 'gateway_clearing:bkash_checkout', nowpayments: 'gateway_clearing:nowpayments', crypto: 'gateway_clearing:nowpayments', sslcommerz: 'gateway_clearing:sslcommerz', card: 'gateway_clearing:sslcommerz', mock: 'gateway_clearing:mock' };
@@ -160,6 +161,12 @@ export class AdminDepositsService {
       await tx.$queryRaw`SELECT id FROM deposits WHERE id = ${depositId}::uuid FOR UPDATE`;
       const d = await tx.deposit.findUniqueOrThrow({ where: { id: depositId } });
       if (!['initiated', 'pending', 'expired', 'failed'].includes(d.status)) throw new ApiError('INVALID_STATE', 'This deposit is already settled.');
+      // One payment (TrxID) is credited once, even when it was submitted on several deposits.
+      if (d.txHash) {
+        await lockTrxId(tx, d.txHash);
+        const other = await tx.deposit.findFirst({ where: { txHash: d.txHash, id: { not: d.id }, status: { in: ['completed', 'refunded'] } }, select: { publicRef: true } });
+        if (other) throw new ApiError('DUPLICATE_PROVIDER_TXN', `This transaction ID was already credited on ${other.publicRef}.`);
+      }
       const clearing = await this.sysAcc(tx, CLEARING[d.provider] ?? `gateway_clearing:${d.provider}`, 'gateway_clearing');
       const avail = await this.core.ledger.userAccount(d.employerUserId, 'employer_available', tx);
       await this.core.ledger.userAccount(d.employerUserId, 'employer_reserved', tx);
@@ -217,6 +224,10 @@ export class AdminDepositsService {
     const d = await this.find(ref);
     if (!['initiated', 'pending', 'expired'].includes(d.status)) throw new ApiError('INVALID_STATE', 'This deposit cannot be approved.');
     const amount = b.amount_usd ? needMoney(b.amount_usd, 'amount_usd') : dec(d.amountUsd);
+    // One admin may credit up to the requested amount (less when the user sent less). Anything more
+    // creates money beyond the request, so it must go through Manual complete (second approver).
+    if (amount.gt(dec(d.amountUsd)))
+      throw new ApiError('VALIDATION_FAILED', undefined, { amount_usd: [`You can credit up to ${m2(d.amountUsd)} here. To credit more, use Manual complete — it needs a second approver.`] });
     const providerRef = (b.provider_reference ? String(b.provider_reference).trim() : null) || d.txHash || d.providerPaymentId || d.publicRef;
     const r = await this.credit(ctx, d.id, amount, providerRef);
     await this.audit.record(ctx, { action: 'deposit.approve', entityType: 'deposit', entityId: d.id, entityRef: d.publicRef, after: { status: 'completed', amount_usd: amount.toFixed(2), ledger_ref: r.t.publicRef, maker: ctx.fullName } });
@@ -435,6 +446,7 @@ export class AdminDepositsController {
 
   @Post(':ref/approve')
   @HttpCode(200)
+  @Reauth()
   @Perms('deposits.write')
   approve(@Admin() ctx: AdminCtx, @Param('ref') ref: string, @Body() b: Record<string, unknown>) {
     return this.svc.approve(ctx, ref, b ?? {});

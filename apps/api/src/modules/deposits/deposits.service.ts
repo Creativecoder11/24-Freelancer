@@ -15,7 +15,17 @@ import { MockPaymentProvider, canonicalJson, mockSign, type PaymentProviderAdapt
 
 const PROVIDER_SLOTS = ['bkash', 'nagad', 'aggregator', 'crypto', 'mock'] as const;
 
+/** Serialises everything that checks or credits one manual TrxID (transaction-scoped advisory lock). */
+export async function lockTrxId(tx: Prisma.TransactionClient, trxId: string) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'deposit-trx:' + trxId}))`;
+}
+
+/**
+ * Mock payments (free "paid" deposits) — fail closed: never on a NODE_ENV=production process, even
+ * when APP_ENV / PAYMENTS_MODE are missing from the server's env (both default to the dev values).
+ */
 export function paymentsMockEnabled() {
+  if (process.env.NODE_ENV === 'production') return false;
   const env = process.env.APP_ENV ?? 'local';
   return (process.env.PAYMENTS_MODE ?? 'mock') === 'mock' && ['local', 'dev', 'test'].includes(env);
 }
@@ -105,23 +115,27 @@ export class DepositsService implements OnModuleInit, OnModuleDestroy {
       if (!def.senderPattern.test(senderNumber)) fields.sender_number = [def.senderError];
       if (!def.refPattern.test(trxId)) fields.trx_id = [def.refError];
       if (Object.keys(fields).length) throw new ApiError('VALIDATION_FAILED', undefined, fields);
-      const dup = await this.db.deposit.findFirst({ where: { txHash: trxId, status: { not: 'failed' } } });
-      if (dup) throw new ApiError('DUPLICATE_PROVIDER_TXN', `This ${def.refLabel} was already submitted on another deposit.`, { trx_id: [`This ${def.refLabel} was already submitted.`] });
-
-      const dep = await this.db.deposit.create({
-        data: {
-          employerUserId: userId,
-          method: def.group,
-          provider: `${b.channel}_manual`,
-          providerAsset: b.channel,
-          providerPaymentId: senderNumber,
-          txHash: trxId,
-          amountUsd: new Prisma.Decimal(amount.toFixed(6)),
-          fxRate: rate ? new Prisma.Decimal(rate.toFixed(6)) : null,
-          chargeAmountBdt: charge ? new Prisma.Decimal(charge.toFixed(2)) : null,
-          status: 'pending',
-          expiresAt,
-        },
+      // Check + insert under a per-TrxID lock, so two concurrent submits of one payment can't both
+      // become pending (the admin credit re-checks under the same lock).
+      const dep = await this.db.$transaction(async (tx) => {
+        await lockTrxId(tx, trxId);
+        const dup = await tx.deposit.findFirst({ where: { txHash: trxId, status: { not: 'failed' } }, select: { id: true } });
+        if (dup) throw new ApiError('DUPLICATE_PROVIDER_TXN', `This ${def.refLabel} was already submitted on another deposit.`, { trx_id: [`This ${def.refLabel} was already submitted.`] });
+        return tx.deposit.create({
+          data: {
+            employerUserId: userId,
+            method: def.group,
+            provider: `${b.channel}_manual`,
+            providerAsset: b.channel,
+            providerPaymentId: senderNumber,
+            txHash: trxId,
+            amountUsd: new Prisma.Decimal(amount.toFixed(6)),
+            fxRate: rate ? new Prisma.Decimal(rate.toFixed(6)) : null,
+            chargeAmountBdt: charge ? new Prisma.Decimal(charge.toFixed(2)) : null,
+            status: 'pending',
+            expiresAt,
+          },
+        });
       });
       const checkoutUrl = `/employer/wallet/deposits/${dep.publicRef}`;
       await this.db.deposit.update({ where: { id: dep.id }, data: { checkoutUrl } });

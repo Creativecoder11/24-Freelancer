@@ -857,6 +857,11 @@ export class JobsService {
       // The client shows reserve + fee as one total; older clients send the reserve alone.
       if (body.expected_amount_usd !== undefined && !this.sameAmount(body.expected_amount_usd, amount.plus(feeQuote)) && !this.sameAmount(body.expected_amount_usd, amount))
         throw new ApiError('QUOTE_CHANGED', undefined, undefined, { total_reserved_usd: usd2(amount), fee_usd: usd2Up(feeQuote) });
+      // A reused key would hit the existing ledger rows (no money moves) while slots and the job's
+      // reserve counter still grow — free slots. Refuse it; true retries are replayed by the controller.
+      const reserveKey = `job:${job.publicId}:slots:${idemKey}`;
+      const feeKey = `job:${job.publicId}:slotfee:${idemKey}`;
+      if (await tx.ledgerTransaction.findFirst({ where: { idempotencyKey: { in: [reserveKey, feeKey] } }, select: { id: true } })) throw new ApiError('IDEMPOTENCY_CONFLICT');
       await tx.job.update({ where: { id: job.id }, data: { slotsTotal: { increment: n }, version: { increment: 1 } } });
       const t =
         job.status === 'running'
@@ -865,12 +870,12 @@ export class JobsService {
               job,
               'reserve',
               amount,
-              `job:${job.publicId}:slots:${idemKey}`,
+              reserveKey,
               { title: job.title, slots: n, added: n, reward: usd3(job.rewardUsd), kind: 'add_slots' },
               { userId },
             )
           : null;
-      const fee = await this.chargeExtraWorkers(tx, userId, job, n, `job:${job.publicId}:slotfee:${idemKey}`);
+      const fee = await this.chargeExtraWorkers(tx, userId, job, n, feeKey);
       const fresh = await tx.job.findUniqueOrThrow({ where: { id: job.id } });
       const bal = await this.core.balances(userId, tx);
       return {

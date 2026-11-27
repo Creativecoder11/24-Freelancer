@@ -90,8 +90,8 @@ export class MeController {
 
   @Post('password')
   @HttpCode(200)
-  password(@CurrentUser('id') id: string, @Body(new ZodPipe(changePasswordSchema)) body: { current_password: string; new_password: string }) {
-    return this.me.changePassword(id, body);
+  password(@CurrentUser() user: AuthUser, @Body(new ZodPipe(changePasswordSchema)) body: { current_password: string; new_password: string }) {
+    return this.me.changePassword(user, body);
   }
 
   @Patch('security')

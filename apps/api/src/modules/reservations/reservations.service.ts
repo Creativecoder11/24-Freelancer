@@ -282,8 +282,13 @@ export class ReservationsService {
         const stale = dto.draft.rev !== undefined && current?.rev !== undefined && current.rev >= dto.draft.rev;
         if (!stale) {
           const reqIds = new Set((await tx.jobProofRequirement.findMany({ where: { jobId: r.jobId }, select: { id: true } })).map((q) => q.id));
+          // Only the worker's own uploads may sit in a draft: the draft view signs URLs for them.
+          const askedUploads = dto.draft.proof_items.map((p) => p.upload_id).filter((v): v is string => !!v);
+          const ownUploads = new Set(
+            askedUploads.length ? (await tx.upload.findMany({ where: { id: { in: askedUploads }, ownerUserId: userId }, select: { id: true } })).map((u) => u.id) : [],
+          );
           const draft: ReservationDraft = {
-            proof_items: dto.draft.proof_items.filter((p) => reqIds.has(p.proof_requirement_id)),
+            proof_items: dto.draft.proof_items.filter((p) => reqIds.has(p.proof_requirement_id) && (!p.upload_id || ownUploads.has(p.upload_id))),
             worker_note: dto.draft.worker_note,
             attestation: !!dto.draft.attestation,
             ...(dto.draft.rev !== undefined ? { rev: dto.draft.rev } : {}),
